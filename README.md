@@ -36,6 +36,7 @@ Any combination of these flags can be appended to the command:
 | `--no-plots` | Skip all figure output (CSV data is still written) |
 | `--no-aod` | Skip AOD calculation |
 | `--no-zonal` | Skip zonal mean snapshots |
+| `--list-experiments` | List available YAMLs in `experiments/` and exit |
 
 These flags override the YAML config — you do not need to comment out YAML sections to skip a step:
 
@@ -48,18 +49,26 @@ python run_time_series.py ben2_vei7.yaml --no-plots
 
 # Full run with timing on an allocated compute node
 python run_time_series.py ben2_vei7.yaml --nthreads 32 --time
+
+# See what experiments are available
+python run_time_series.py --list-experiments
 ```
 
 ## Performance
 
-The pipeline uses a multithreaded dask scheduler for all reductions (scalars, profiles, geometry, zonal means). All major computation stages are batched into single parallel dask passes — multiple variables are computed together rather than one at a time. Grid geometry (`compute_geometry`) is fully lazy: pressure, layer thickness, and altitude are built as dask arrays and only evaluated when needed, avoiding large upfront memory allocations.
+The pipeline uses a multithreaded dask scheduler for all reductions (scalars, profiles, geometry, zonal means). Key design choices:
+
+- All grid geometry is fully lazy — pressure, layer thickness, and altitude are built as dask arrays and only evaluated when needed.
+- Scalars are batched into a single `dask.compute()` call; profiles likewise. Each group does one parallel Lustre read pass rather than one pass per variable.
+- Zonal mean variables are all preloaded in a single batched `dask.compute()` call before the per-period loop.
+- `pressure_1d` and `altitude_1d` (used for CSV/plot labeling) are derived from the first timestep only — not a full-dataset mean — to avoid an expensive extra scan.
 
 Typical runtimes for a ~1000-timestep run at 96×144 grid:
 
 | Environment | Threads | Total time |
 |-------------|---------|------------|
 | MacBook Pro | 8 | ~15 s |
-| HPC login node (shared) | 8 | 150–340 s (variable due to contention) |
+| HPC login node (shared) | 8 | 135–340 s (variable due to contention) |
 | HPC compute node (`salloc`) | 8 | ~185 s |
 | HPC compute node (`salloc`) | 32 | ~50 s |
 
@@ -75,17 +84,11 @@ A fully-annotated template covering every available field is at:
 experiments/template.yaml
 ```
 
-Copy it, rename it for your run, and fill in your values.
+Copy it, rename it for your run, and fill in your values. To see all available configs:
 
-Existing experiment configs:
-
-| File | Planet / run |
-|------|-------------|
-| `t1d_vei7.yaml` | TRAPPIST-1d, VEI-7 eruption |
-| `hab1_vei7.yaml` | Habitable zone planet 1, VEI-7 |
-| `hab2_vei7.yaml` | Habitable zone planet 2, VEI-7 |
-| `ben2_vei7.yaml` | Benchmark planet 2, VEI-7 (exo-atmosphere constants) |
-| `modern_vei6.yaml` | Modern Earth, VEI-6 (terrestrial constants) |
+```bash
+python run_time_series.py --list-experiments
+```
 
 ## Experiment YAML reference
 
@@ -101,8 +104,6 @@ file_pattern:
   - 'run_name.cam.h1.0001-04-11-00000.nc'
   # one line per CAM h1 file to include
 ```
-
-The filename prefix before the first `.` is used as the experiment name for output subdirectory naming, so all files must share the same prefix.
 
 ### Physical constants (required)
 
@@ -167,7 +168,7 @@ AOD requires VOLCHZMD in the CAM output. **All AOD settings are in the same expe
 optics_file: '/path/to/volc_pw1975_n68_r1.0um_mie.nc'   # pre-computed Mie optics table
 
 # Optional tuning (defaults shown):
-volc_reff:   1.0    # effective particle radius [µm] for Kext lookup/Mie
+volc_reff:   1.0    # effective particle radius [µm] — used by Mie path only (see note below)
 rho_aerosol: 1.84   # bulk aerosol density [g/cm³] — used only by Mie path
 
 # Optional single-wavelength Mie AOD (uncomment all three to enable):
@@ -204,8 +205,6 @@ One `zonal/zonal_<VAR>_day<DAY>.png` per (variable, day) pair. The x-axis is lat
 
 ### AOD plots (requires `optics_file`)
 
-Two plots are produced per wavelength:
-
 | Filename | Contents |
 |----------|----------|
 | `aod/aod_550nm_band_timeseries.png` | Global mean AOD at 550 nm (band-interpolated Kext) |
@@ -217,18 +216,26 @@ The Mie pair is only produced when `mie_wavelength_um` is set in the YAML.
 
 ---
 
-## Zonal mean CSV format
-
-Files are written to `data/<exp>/zonal/<VAR>_day<DAY>.csv`. Rows are pressure levels, columns are latitudes:
+## Output structure
 
 ```
-pressure_mb, -90.0000, -87.5000, ..., 90.0000
-1.2345,       0.0,      0.0,     ..., 0.0
-2.5678,       0.0,      0.0,     ..., 0.0
-...
+data/<exp>/
+    scalar/     <var>.csv           — two columns: days, value
+    profiles/   <var>.csv           — # pressure_Pa and # altitude_m comment lines,
+                                      then days + per-level columns
+    aod/        aod_<tag>.csv       — two columns: days, global-mean AOD
+                aod_zonal_<tag>.csv — days + per-lat columns
+    zonal/      <var>_day<DAY>.csv  — rows=pressure levels [mb], cols=latitudes [°]
+figures/<exp>/
+    quicklook_*.png
+    aod/        aod_<tag>_timeseries.png
+                aod_<tag>_zonal_hovmoller.png
+    zonal/      zonal_<var>_day<DAY>.png
 ```
 
-Read in pandas with `pd.read_csv(path)`. The `pressure_mb` column gives the layer midpoint pressure in mb (time- and area-mean).
+Zonal CSV format: first row is header `pressure_mb, lat1, lat2, ...`; each subsequent row is one pressure level. Written with `pandas.DataFrame.to_csv()`. Read with `pd.read_csv(path)`.
+
+Profile CSVs write pressure and altitude coordinates as `# pressure_Pa:` and `# altitude_m:` comment lines before the column header. Read in pandas with `pd.read_csv(path, comment='#')`.
 
 ---
 
@@ -237,7 +244,7 @@ Read in pandas with `pd.read_csv(path)`. The `pressure_mb` column gives the laye
 AOD is computed from the VOLCHZMD field (aerosol mass density, g/cm³) and the layer thickness dz (m):
 
 ```
-AOD_layer = Kext [cm²/g] × ρ [g/cm³] × dz [cm]
+AOD_layer  = Kext [cm²/g] × ρ [g/cm³] × dz [cm]
 AOD_column = Σ AOD_layer  (sum over lev)
 ```
 
@@ -252,8 +259,8 @@ The optics file `volc_pw1975_n68_r1.0um_mie.nc` contains pre-computed Mie extinc
 When `mie_wavelength_um` is set, `miepython` computes Kext directly:
 
 ```
-m      = n_real - i × |n_imag|    (miepython sign convention)
-Kext   = Q_ext × 3 / (4 × r_eff_cm × ρ_bulk)   [cm²/g]
+m    = n_real - i × |n_imag|    (miepython sign convention)
+Kext = Q_ext × 3 / (4 × r_eff_cm × ρ_bulk)   [cm²/g]
 ```
 
 This is useful for wavelengths outside the optics table or for sensitivity tests with different refractive indices.
@@ -263,10 +270,10 @@ This is useful for wavelengths outside the optics table or for sensitivity tests
 ## Code structure
 
 ```
-run_time_series.py   Orchestrator: loads data, calls compute/optics, saves outputs
+run_time_series.py   Orchestrator: arg parsing, calls compute/optics, saves outputs
 config.py            YAML loader; exposes all experiment parameters as module constants
 compute.py           Pure computation: grid geometry, mass integrals, area means, zonal means
-optics.py            Pure computation: optics table I/O, Kext interpolation, Mie, AOD
+optics.py            Pure computation: optics table I/O, Kext lookup, Mie, AOD
 aod_plots.py         AOD-specific plot functions (timeseries, zonal Hovmoller)
 zonal_plots.py       Zonal mean contour plot function; defines LOG_SCALE_DECADES
 experiments/         One YAML per model run
@@ -274,4 +281,4 @@ data/                CSV output (scalar/, profiles/, aod/, zonal/ subdirectories
 figures/             PNG output (one subdirectory per experiment, with aod/ and zonal/ sub-dirs)
 ```
 
-`compute.py` and `optics.py` contain no plotting or file I/O (except `optics.load_band_optics`). All grid geometry — pressure from hybrid coefficients, layer thickness, cell area, air mass — is computed in `compute.compute_geometry()` as lazy dask-backed DataArrays and passed downstream as a plain dict. Reductions over multiple variables (scalars, profiles, zonal means) are batched into single `dask.compute()` calls so the scheduler can parallelize across chunks in one pass.
+`compute.py` and `optics.py` contain no plotting or file I/O (except `optics.load_band_optics`). All grid geometry is computed in `compute.compute_geometry()` as lazy dask-backed DataArrays and passed downstream as a plain dict. Reductions over multiple variables are batched into single `dask.compute()` calls so the scheduler can parallelize across chunks in one pass.

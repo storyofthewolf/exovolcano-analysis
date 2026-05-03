@@ -14,6 +14,9 @@ python run_time_series.py experiments/hab2_vei7.yaml
 # Run via environment variable
 CONFIG=experiments/t1d_vei7.yaml python run_time_series.py
 
+# List available experiment YAMLs
+python run_time_series.py --list-experiments
+
 # Print usage / key reference
 python run_time_series.py --help
 ```
@@ -24,7 +27,7 @@ The experiment name is derived from the YAML filename stem (e.g. `experiments/be
 
 ### Runtime flags
 
-All flags are stripped from `sys.argv` before `config.py` is imported, so they are invisible to the YAML/config layer.
+All flags are parsed by argparse before `config.py` is imported. After parsing, `sys.argv` is rewritten to contain only the YAML argument so `config.py` sees a clean argv.
 
 | Flag | Effect |
 |------|--------|
@@ -35,6 +38,7 @@ All flags are stripped from `sys.argv` before `config.py` is imported, so they a
 | `--no-plots` | Skip all figure output (CSVs still written) |
 | `--no-aod` | Skip AOD calculation |
 | `--no-zonal` | Skip zonal mean snapshots |
+| `--list-experiments` | List YAMLs in `experiments/` and exit |
 
 ```bash
 # Typical fast cluster run
@@ -49,16 +53,16 @@ The pipeline has six modules:
 
 **`compute.py`** — Pure computation engine; no I/O or side effects. Reads CAM NetCDF output via xarray/dask, builds grid geometry from hybrid pressure coordinates, and computes global diagnostics. Key functions:
 - `load_dataset()` — opens multi-file CAM NetCDF as a lazy dask-backed xarray Dataset (`chunks={'time': 200}`); extracts `gw` (Gaussian weights) from the first file separately to avoid mfdataset inflation
-- `compute_geometry()` — builds pressure, layer thickness (dp), altitude (z_mid), cell area, air mass, and cell volume as **lazy dask-backed DataArrays** using explicit dask broadcasting (not xarray) to avoid coordinate inflation bugs with mfdataset. `PS` and `T` are kept as dask arrays — no eager `.values` load. The cumsum for `z_mid` uses `dask.array.cumsum`. Only first-timestep diagnostics trigger a `.compute()`.
+- `compute_geometry()` — builds pressure, layer thickness (dp), altitude (z_mid), cell area, air mass, and cell volume as **lazy dask-backed DataArrays** using explicit dask broadcasting (not xarray) to avoid coordinate inflation bugs with mfdataset. `PS` and `T` are kept as dask arrays — no eager `.values` load. The cumsum for `z_mid` uses `dask.array.cumsum`. First-timestep diagnostics are batched into a single `da.compute(PS_da[0], dp_pa_da[0], z_mid_da[0])` call.
 - `compute_scalar()` — returns a **lazy** DataArray (no `.load()`); caller batches with `dask.compute()`
 - `compute_profile()` — returns a **lazy** DataArray (no `.load()`); caller batches with `dask.compute()`
 - `preload_zonal_mean(ds, name)` — returns a lazy lon-mean DataArray; callers should batch multiple variables with `dask.compute()` before accessing `.values`
 - `compute_zonal_mean(days, target_day, zonal_np)` — slices a pre-loaded `(time, lev, lat)` numpy array; no I/O
 
 **`optics.py`** — Pure computation engine for aerosol optics; no plotting or I/O except `load_band_optics`. Key functions:
-- `load_band_optics(filepath)` — opens `volc_pw1975_n68_r1.0um_mie.nc`; `rbins` are stored in cm in that file and are converted to µm on load (`* 1e4`)
+- `load_band_optics(filepath)` — opens `volc_pw1975_n68_r1.0um_mie.nc`; `rbins` are stored in cm and returned as-is (no unit conversion). **Only nbins=1 is currently supported** — for single-bin files, the radius value is not used in the Kext lookup.
 - `select_band_550nm(wvn_centers)` — finds band index nearest to 18182 cm⁻¹
-- `interpolate_kext(optics, i_wave, reff_um)` — log-log interpolation of Kext over rbins
+- `interpolate_kext(optics, i_wave, reff_um)` — for nbins=1, returns `kext[0]` directly; `reff_um` is ignored. Multi-bin log-log interpolation is implemented but unvalidated.
 - `mie_kext(wavelength_um, reff_um, ...)` — calls `miepython.efficiencies(m, diameter_um, wavelength_um)`; note this version of miepython uses diameter + wavelength in the same units, not the old size-parameter `mie(m, x)` API
 - `compute_aod(volchzmd_vals, dz_m_vals, kext_cgs)` — pure numpy; multiplies dz by 100 for m→cm, sums over lev, returns `(time, lat, lon)`
 
@@ -67,20 +71,24 @@ The pipeline has six modules:
 **`zonal_plots.py`** — Zonal mean contour plot function. Also defines `LOG_SCALE_DECADES` — the single authoritative dict of which variables use `LogNorm` and how many decades to span. `run_time_series.py` imports `LOG_SCALE_DECADES` from here for use in the Hovmoller plots too. Key function:
 - `plot_zonal_mean(lat, pressure_1d, data_2d, name, units, actual_day, figures_dir, filename, log_scale)` — contour plot with log-pressure y-axis (surface at bottom), latitude x-axis, same colormap logic as Hovmoller plots
 
-**`run_time_series.py`** — Orchestrator. Parses runtime flags → calls config → compute → optics → saves CSVs → makes quicklook plots. Key behaviors:
-- All custom flags (`--time`, `--nthreads`, `--no-*`) are parsed and stripped from `sys.argv` before `config.py` is imported
+**`run_time_series.py`** — Orchestrator. Uses argparse to parse all flags, rewrites `sys.argv` to just the YAML arg, then imports config → compute → optics → saves CSVs → makes quicklook plots. Key behaviors:
+- All flags parsed by argparse before any other imports; `sys.argv` is rewritten to `[argv[0], yaml_path]` before `import config`
 - Uses a **threaded dask scheduler** (`dask.config.set(scheduler='threads', num_workers=N)`); default 8 threads, overridden by `--nthreads N`
-- Scalars and profiles are collected as lazy DataArrays then materialized in a **single `dask.compute()` call each** — one parallel pass over all variables rather than one pass per variable
+- Scalars are collected as lazy DataArrays then materialized in a **single `dask.compute()` call** — one parallel pass over all scalar variables
+- Profiles are collected as lazy DataArrays then materialized in a **separate single `dask.compute()` call** — do not combine scalars and profiles into one call, as the combined graph is too large for the threaded scheduler
 - Zonal variables are all preloaded in a **single batched `dask.compute()` call** before the per-period loop
-- `pressure_1d` and `altitude_1d` are computed in a **single batched `dask.compute()` call**
+- `pressure_1d` and `altitude_1d` are derived from `isel(time=0)` — first timestep only, not a full-dataset mean
 - Imports `LOG_SCALE_DECADES` from `zonal_plots` — do not define it in both places
+- Runtime summary box auto-sizes column widths to the longest label name
 
 ## Performance notes
 
 - `compute_scalar()` and `compute_profile()` return **lazy** DataArrays. Do not call `.load()` inside those functions — the orchestrator batches them with `dask.compute()`.
 - `preload_zonal_mean()` returns a **lazy** DataArray. Always batch multiple variables with `dask.compute()` before looping over periods.
 - The geometry arrays (`dp_pa`, `mid_p`, `dz`, `z_mid`, `air_mass_cell`, `cell_volume`) are dask-backed. Passing them into xarray reductions keeps the full graph lazy until `dask.compute()` is called.
-- On an HPC cluster, use `--nthreads 32` (or your core allocation) on a dedicated compute node (`salloc`). On a shared login node keep threads at 4–8 to avoid contention with other users.
+- Do NOT combine scalars and profiles into a single `dask.compute()` call — the combined graph causes hangs with the threaded scheduler. Keep them as separate passes.
+- `pressure_1d`/`altitude_1d` use `isel(time=0)` — this avoids a full-dataset scan just to produce axis labels.
+- On an HPC cluster, use `--nthreads 32` (or your core allocation) on a dedicated compute node (`salloc`). On a shared login node keep threads at 4–8 to avoid contention with other users. Login node timing is highly variable due to Lustre contention — not fixable in code.
 
 ## Experiment YAML Schema
 
@@ -113,7 +121,7 @@ zonal_mean_periods:             # both sections required to enable zonal output
 
 # AOD — omit optics_file (or set to null) to skip the entire AOD section
 optics_file: '/path/to/volc_pw1975_n68_r1.0um_mie.nc'
-volc_reff:   1.0                # effective particle radius [µm]
+volc_reff:   1.0                # effective particle radius [µm] (used by Mie path only)
 rho_aerosol: 1.84               # bulk aerosol density [g/cm³]
 # mie_wavelength_um:         0.55   # optional; requires miepython
 # mie_refractive_index_real: 1.43
@@ -125,7 +133,7 @@ rho_aerosol: 1.84               # bulk aerosol density [g/cm³]
 ```
 data/<exp>/
     scalar/     <var>.csv                    — two columns: days, value
-    profiles/   <var>.csv                    — comment lines with P/Z coords,
+    profiles/   <var>.csv                    — # pressure_Pa and # altitude_m comment lines,
                                                then days + per-level columns
     aod/        aod_<tag>.csv               — two columns: days, global-mean AOD
                 aod_zonal_<tag>.csv         — days + per-lat columns
@@ -140,7 +148,7 @@ figures/<exp>/
 
 Zonal CSV format: first row is header `pressure_mb, lat1, lat2, ...`; each subsequent row is one pressure level. Written with `pandas.DataFrame.to_csv()`. Read with `pd.read_csv(path)`.
 
-Profile CSVs write pressure and altitude coordinates as `# pressure_Pa:` and `# altitude_m:` comment lines before the column header (no NaN placeholders). Read in pandas with `pd.read_csv(path, comment='#')`.
+Profile CSVs write pressure and altitude coordinates as `# pressure_Pa:` and `# altitude_m:` comment lines before the column header. Read in pandas with `pd.read_csv(path, comment='#')`.
 
 ## Key Domain Details
 
@@ -151,5 +159,5 @@ Profile CSVs write pressure and altitude coordinates as `# pressure_Pa:` and `# 
 - **Lazy geometry**: All 4D geometry fields returned by `compute_geometry()` are dask-backed DataArrays. Downstream reductions in `compute_scalar()` and `compute_profile()` are also lazy; the orchestrator triggers computation via batched `dask.compute()` calls.
 - **Profile Hovmoller plots and zonal mean plots**: log-pressure y-axis, surface at bottom. Variables in `LOG_SCALE_DECADES` (SO2, H2SO4, Q, VOLCHZMD) use `LogNorm` colormaps anchored at the data peak; others use linear with 2nd–98th percentile clipping. `LOG_SCALE_DECADES` is defined in `zonal_plots.py` and imported by `run_time_series.py` — do not define it in both places.
 - **Experiment name** is the YAML filename stem (`_config_path` in `config.py`), not the `file_pattern` prefix. `get_experiment_name()` uses `os.path.splitext(os.path.basename(_config_path))[0]`.
-- **`rbins` unit bug in optics file**: `volc_pw1975_n68_r1.0um_mie.nc` labels `rbins` as microns but the values are in centimetres. `load_band_optics` applies `* 1e4` on load to correct this.
+- **nbins=1 only**: `volc_pw1975_n68_r1.0um_mie.nc` has a single radius bin. `load_band_optics` returns `rbins` in cm as stored. `interpolate_kext` returns `kext[0]` directly for nbins=1; `reff_um` is unused. Multi-bin interpolation would require validating rbins units and testing.
 - **miepython API**: The installed version uses `miepython.efficiencies(m, diameter, wavelength)` with both lengths in the same units. The old `miepython.mie(m, x)` size-parameter API does not exist in this version.
