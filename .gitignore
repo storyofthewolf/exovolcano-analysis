@@ -21,3 +21,5 @@ __pycache__/
 experiments/*.yaml
 experiments/*
 !experiments/template.yaml
+
+.claude/
