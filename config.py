@@ -30,8 +30,6 @@ def _find_config_file():
         name = sys.argv[1]
         if os.path.exists(name):
             return name
-        if os.sep in name or '/' in name:
-            return name
         return os.path.join(EXPERIMENTS_DIR, name)
     if 'CONFIG' in os.environ:
         return os.environ['CONFIG']

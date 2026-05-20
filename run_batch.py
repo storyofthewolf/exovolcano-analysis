@@ -5,12 +5,12 @@ run_batch.py - Run run_time_series.py sequentially for a list of experiments.
 Usage:
     python run_batch.py exp1.yaml exp2.yaml exp3.yaml [flags]
     python run_batch.py --batch-file cases.txt [flags]
-    python run_batch.py case1.yaml case2.yaml --prefix experiments/batch_A/
+    python run_batch.py --prefix experiments/exovolc_tambora/exovolc_tam [flags]
 
---prefix prepends a string to every YAML name before passing it to
-run_time_series.py.  It is consumed by run_batch.py and not forwarded.
-Example: --prefix experiments/batch_A/ turns case1.yaml into
-experiments/batch_A/case1.yaml.
+--prefix is a path stem; *.yaml is appended automatically to glob for matching
+files.  When used alone (no positional configs or --batch-file), all matching
+files are expanded and run.  --prefix is consumed by run_batch.py and not
+forwarded to run_time_series.py.
 
 All other flags are forwarded verbatim to run_time_series.py,
 e.g. --nthreads 16 --no-aod --time
@@ -20,6 +20,7 @@ lines starting with '#' are ignored.
 """
 
 import argparse
+import glob as _glob
 import subprocess
 import sys
 import time
@@ -77,11 +78,10 @@ def build_forward_flags(args):
     return flags
 
 
-def run_one(yaml_name, prefix, forward_flags):
-    full_name = prefix + yaml_name
-    cmd = [sys.executable, 'run_time_series.py', full_name] + forward_flags
+def run_one(yaml_name, forward_flags):
+    cmd = [sys.executable, 'run_time_series.py', yaml_name] + forward_flags
     print(f"\n{'='*60}")
-    print(f"  Case: {full_name}")
+    print(f"  Case: {yaml_name}")
     print(f"{'='*60}")
     t0 = time.perf_counter()
     result = subprocess.run(cmd)
@@ -96,8 +96,16 @@ def main():
     if args.batch_file:
         cases += load_batch_file(args.batch_file)
 
+    if not cases and args.prefix:
+        pattern = args.prefix + '*.yaml'
+        matched = sorted(_glob.glob(pattern))
+        if not matched:
+            print(f"ERROR: --prefix '{args.prefix}' matched no yaml files.")
+            sys.exit(1)
+        cases += matched
+
     if not cases:
-        print("ERROR: No experiment YAMLs specified. Use positional args or --batch-file.")
+        print("ERROR: No experiment YAMLs specified. Use positional args, --batch-file, or --prefix.")
         sys.exit(1)
 
     forward_flags = build_forward_flags(args)
@@ -110,9 +118,9 @@ def main():
     t_batch_start = time.perf_counter()
 
     for yaml_name in cases:
-        returncode, elapsed = run_one(yaml_name, args.prefix, forward_flags)
+        returncode, elapsed = run_one(yaml_name, forward_flags)
         status = 'OK' if returncode == 0 else f'FAILED (exit {returncode})'
-        results.append((args.prefix + yaml_name, status, elapsed))
+        results.append((yaml_name, status, elapsed))
 
     # Summary
     total_elapsed = time.perf_counter() - t_batch_start
