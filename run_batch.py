@@ -5,8 +5,14 @@ run_batch.py - Run run_time_series.py sequentially for a list of experiments.
 Usage:
     python run_batch.py exp1.yaml exp2.yaml exp3.yaml [flags]
     python run_batch.py --batch-file cases.txt [flags]
+    python run_batch.py case1.yaml case2.yaml --prefix experiments/batch_A/
 
-All flags after the YAML names are forwarded verbatim to run_time_series.py,
+--prefix prepends a string to every YAML name before passing it to
+run_time_series.py.  It is consumed by run_batch.py and not forwarded.
+Example: --prefix experiments/batch_A/ turns case1.yaml into
+experiments/batch_A/case1.yaml.
+
+All other flags are forwarded verbatim to run_time_series.py,
 e.g. --nthreads 16 --no-aod --time
 
 --batch-file format: one experiment YAML name per line; blank lines and
@@ -52,6 +58,10 @@ def parse_args():
     parser.add_argument('--no-plots',   action='store_true')
     parser.add_argument('--no-aod',     action='store_true')
     parser.add_argument('--no-zonal',   action='store_true')
+    parser.add_argument(
+        '--prefix', default='', metavar='PREFIX',
+        help='String prepended to every YAML name (e.g. experiments/batch_A/).',
+    )
 
     return parser.parse_args()
 
@@ -67,10 +77,11 @@ def build_forward_flags(args):
     return flags
 
 
-def run_one(yaml_name, forward_flags):
-    cmd = [sys.executable, 'run_time_series.py', yaml_name] + forward_flags
+def run_one(yaml_name, prefix, forward_flags):
+    full_name = prefix + yaml_name
+    cmd = [sys.executable, 'run_time_series.py', full_name] + forward_flags
     print(f"\n{'='*60}")
-    print(f"  Case: {yaml_name}")
+    print(f"  Case: {full_name}")
     print(f"{'='*60}")
     t0 = time.perf_counter()
     result = subprocess.run(cmd)
@@ -99,9 +110,9 @@ def main():
     t_batch_start = time.perf_counter()
 
     for yaml_name in cases:
-        returncode, elapsed = run_one(yaml_name, forward_flags)
+        returncode, elapsed = run_one(yaml_name, args.prefix, forward_flags)
         status = 'OK' if returncode == 0 else f'FAILED (exit {returncode})'
-        results.append((yaml_name, status, elapsed))
+        results.append((args.prefix + yaml_name, status, elapsed))
 
     # Summary
     total_elapsed = time.perf_counter() - t_batch_start
