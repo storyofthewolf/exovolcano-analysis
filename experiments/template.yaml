@@ -9,7 +9,7 @@
 # shown; omit them to accept the default.
 
 # =============================================================================
-# INPUT FILES  (REQUIRED)
+# INPUT DIRECTORY  (REQUIRED)
 # =============================================================================
 
 # Absolute path to the top-level archive directory.
@@ -19,6 +19,25 @@ root_dir: '/path/to/cesm/archive/'
 # For a standard CESM archive layout this is typically:
 #   'run_name/atm/hist'
 folder: 'run_name/atm/hist'
+
+
+# =============================================================================
+# OUTPUT DIRECTORIES  (OPTIONAL — defaults shown)
+# =============================================================================
+
+# Root directory for PNG quicklook figures.
+# Actual output goes to <figures_dir>/<experiment_name>/
+figures_dir: 'figures'
+
+# Root directory for CSV data exports.
+# Actual output goes to <data_dir>/<experiment_name>/scalar/
+#                    and <data_dir>/<experiment_name>/profiles/
+data_dir: 'data'
+
+
+# =============================================================================
+# INPUT FILES  (REQUIRED)
+# =============================================================================
 
 # List of CAM h1 history filenames (basenames only, no directory).
 # The prefix before the first '.' is used as the experiment name for
@@ -48,20 +67,6 @@ r_air: 287.058
 # Mean planetary radius [m]
 # Earth: 6.371e6  |  example exo: 6.371e6 * 0.91 = 5.797e6
 r_earth: 6.371e6
-
-
-# =============================================================================
-# OUTPUT DIRECTORIES  (OPTIONAL — defaults shown)
-# =============================================================================
-
-# Root directory for PNG quicklook figures.
-# Actual output goes to <figures_dir>/<experiment_name>/
-figures_dir: 'figures'
-
-# Root directory for CSV data exports.
-# Actual output goes to <data_dir>/<experiment_name>/scalar/
-#                    and <data_dir>/<experiment_name>/profiles/
-data_dir: 'data'
 
 
 # =============================================================================
