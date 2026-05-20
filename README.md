@@ -23,6 +23,33 @@ CONFIG=experiments/ben2_vei7.yaml python run_time_series.py
 
 Outputs are written under `figures/<exp_name>/` and `data/<exp_name>/`.
 
+
+## Running batch
+
+Run multiple cases at once.  Cases each use multiple processors set by --nthreads, but are processed serially.  
+
+```bash
+# Named cases on the command line
+python run_batch.py exp_3Tg.yaml exp_10Tg.yaml exp_30Tg.yaml --nthreads 16 --time
+
+# From a text file
+python run_batch.py --batch-file my_cases.txt --no-aod
+
+# Mixed
+python run_batch.py exp_baseline.yaml --batch-file sensitivity_runs.txt
+```
+
+'''my_cases.txt''' example format
+
+```
+#Sensitivity suite - May 2026
+exp_3Tg_low.yaml
+exp_3Tg_mid.yaml
+exp_10Tg_low.yaml
+# exp_30Tg_high.yaml   <- disabled for now
+```
+
+
 ### Runtime flags
 
 Any combination of these flags can be appended to the command:
