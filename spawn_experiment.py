@@ -24,6 +24,8 @@ import sys
 
 def spawn(source_path, new_casename, dest_dir=None, force=False):
     if not os.path.exists(source_path):
+        source_path = os.path.join("experiments", source_path)
+    if not os.path.exists(source_path):
         sys.exit(f"ERROR: source file not found: {source_path}")
 
     old_casename = os.path.splitext(os.path.basename(source_path))[0]
