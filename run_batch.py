@@ -114,6 +114,15 @@ def main():
     for c in cases:
         print(f"  {c}")
 
+    try:
+        answer = input("\nProceed? [y/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print("\nAborted.")
+        sys.exit(0)
+    if answer not in ('y', 'yes'):
+        print("Aborted.")
+        sys.exit(0)
+
     results = []
     t_batch_start = time.perf_counter()
 
