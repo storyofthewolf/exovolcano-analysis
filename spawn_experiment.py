@@ -4,17 +4,22 @@ spawn_experiment.py - Clone an experiment YAML with a new casename.
 
 Replaces all occurrences of the source casename (filename stem) with
 new_casename in both the filename and file content. Supports cloning to
-multiple new casenames in one call.
+multiple new casenames in one call, via positional args and/or a text file
+listing casenames (one per line).
 
 Usage:
     python spawn_experiment.py <source.yaml> <new_casename> [<new_casename> ...] [--dir DIR] [--force]
-    python spawn_experiment.py <source.yaml> --prefix PREFIX --suffixes S1,S2,S3 [--dir DIR] [--force]
+    python spawn_experiment.py <source.yaml> --names-file FILE [--dir DIR] [--force]
     python spawn_experiment.py <source.yaml> <new_casename> ... --source-dir SRC --dest-dir DEST [--force]
 
 --dir sets both source and destination to the same directory. Use
 --source-dir/--dest-dir instead when cloning across subfolders (e.g. source
 in experiments/exovolc_ben1/, new cases going into experiments/exovolc_ben2/).
 --dir and --source-dir/--dest-dir are mutually exclusive.
+
+--names-file lists one new casename per line; blank lines and lines starting
+with '#' are ignored. Names from the file are appended to any positional
+casenames.
 
 Examples:
     # single clone, source and dest both in experiments/exovolc_ben1/
@@ -24,9 +29,8 @@ Examples:
     python spawn_experiment.py exovolc_ben1_h10s9.yaml exovolc_ben1_h11s10 exovolc_ben1_h12s11 exovolc_ben1_h13s12 \\
         --dir experiments/exovolc_ben1
 
-    # bulk clone, shared prefix + suffix list
-    python spawn_experiment.py exovolc_ben1_h10s9.yaml --dir experiments/exovolc_ben1 \\
-        --prefix exovolc_ben1_ --suffixes h11s10,h12s11,h13s12,h14s13
+    # bulk clone from a text file of casenames
+    python spawn_experiment.py exovolc_ben1_h10s9.yaml --names-file newcases.txt --dir experiments/exovolc_ben1
 
     # cross-folder clone: source in exovolc_ben1/, new cases written into exovolc_ben2/
     python spawn_experiment.py exovolc_ben1_h10s9.yaml exovolc_ben2_h11s10 exovolc_ben2_h12s11 \\
@@ -39,6 +43,13 @@ Examples:
 import argparse
 import os
 import sys
+
+
+def load_names_file(path):
+    with open(path) as f:
+        lines = f.readlines()
+    return [ln.strip() for ln in lines
+            if ln.strip() and not ln.strip().startswith('#')]
 
 
 def spawn(source_arg, new_casename, source_dir=None, dest_dir=None, force=False):
@@ -85,16 +96,14 @@ def main():
     parser.add_argument("source",           help="Source YAML filename (stem or full path)")
     parser.add_argument("new_casenames",    nargs="*", metavar="new_casename",
                         help="One or more new casenames (e.g. exovolc_ben1_h11s10)")
+    parser.add_argument("--names-file",     metavar="FILE", default=None,
+                        help="Text file listing new casenames, one per line ('#' comments and blanks ignored)")
     parser.add_argument("--dir",            metavar="DIR", default=None,
                         help="Directory for both source and dest (e.g. experiments/exovolc_ben1)")
     parser.add_argument("--source-dir",     metavar="DIR", default=None,
                         help="Directory containing the source YAML (use with --dest-dir for cross-folder clones)")
     parser.add_argument("--dest-dir",       metavar="DIR", default=None,
                         help="Directory to write the new YAML(s) into (use with --source-dir for cross-folder clones)")
-    parser.add_argument("--prefix",         metavar="PREFIX", default=None,
-                        help="Prefix prepended to each entry in --suffixes to form new casenames")
-    parser.add_argument("--suffixes",       metavar="S1,S2,...", default=None,
-                        help="Comma-separated suffixes; combined with --prefix to form new casenames")
     parser.add_argument("--force",          action="store_true",
                         help="Overwrite existing output file(s)")
     args = parser.parse_args()
@@ -106,16 +115,11 @@ def main():
     dest_dir = args.dest_dir or args.dir
 
     new_casenames = list(args.new_casenames)
-
-    if args.suffixes:
-        if not args.prefix:
-            sys.exit("ERROR: --suffixes requires --prefix.")
-        new_casenames += [args.prefix + s.strip() for s in args.suffixes.split(",") if s.strip()]
-    elif args.prefix:
-        sys.exit("ERROR: --prefix requires --suffixes.")
+    if args.names_file:
+        new_casenames += load_names_file(args.names_file)
 
     if not new_casenames:
-        sys.exit("ERROR: no new casenames given. Provide positional casenames and/or --prefix/--suffixes.")
+        sys.exit("ERROR: no new casenames given. Provide positional casenames and/or --names-file.")
 
     n = len(new_casenames)
     failures = []
