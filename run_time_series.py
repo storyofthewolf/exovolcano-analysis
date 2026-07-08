@@ -193,6 +193,18 @@ print(f"Data       : {data_dir}\n")
 # CSV helpers
 # ---------------------------------------------------------------------------
 
+def scalar_output_units(method, native_units):
+    """Units of the value actually stored in the scalar CSV.
+
+    mass_integral and volume_integral produce a global integrated burden in
+    kg, regardless of the variable's native units.  area_mean preserves the
+    variable's native units (it is a Gaussian-weighted global mean).
+    """
+    if method in ('mass_integral', 'volume_integral'):
+        return 'kg'
+    return native_units
+
+
 def save_scalar_csv(days, data_array, name, units=''):
     path = os.path.join(data_dir, 'scalar', f"{name}.csv")
     header = f"days_since_start,{name} [{units}]"
@@ -378,7 +390,8 @@ with ds:
             result = compute.compute_scalar(ds, geom, name, method)
             if result is not None:
                 _scalar_lazy[name]  = result
-                _scalar_units[name] = ds[name].attrs.get('units', '') if name in ds else ''
+                _native_units = ds[name].attrs.get('units', '') if name in ds else ''
+                _scalar_units[name] = scalar_output_units(method, _native_units)
 
         if _scalar_lazy:
             _computed = dask.compute(*_scalar_lazy.values())
