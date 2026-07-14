@@ -30,6 +30,19 @@ per subprocess and run_time_series.py sets from its --case flag.  With no CASE
 set, a single-case batch runs that case; a multi-case batch errors and lists
 the available names.
 
+Output directories resolve, highest precedence first:
+
+    EXOVOLC_FIGURES_DIR / EXOVOLC_DATA_DIR   env (set by --figures-dir/--data-dir)
+    EXOVOLC_OUTPUT_DIR                       env (set by --output-dir)
+    figures_dir: / data_dir:                 batch YAML
+    output_dir:                              batch YAML, sets both at once
+    'figures' / 'data'                       default, under the repo root
+
+'~' and $VARS are expanded, and a relative path is taken relative to the repo
+root, not the working directory -- so a batch launched from a scratch filesystem
+still writes where the config says, and one that says nothing does not scatter
+output wherever it happened to be launched from.
+
 Usage:
     python run_time_series.py exovolc_ben1.yaml --case exovolc_ben1_h11s10
     python run_batch.py exovolc_ben1.yaml        # every case in the batch
@@ -46,6 +59,9 @@ import yaml
 # ---------------------------------------------------------------------------
 
 EXPERIMENTS_DIR = 'experiments'
+
+# Relative output paths resolve against the repo root, not the CWD.
+REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Keys a case may set for itself.  Everything else in the YAML is batch-wide.
 # optics_file/volc_reff are here because the optics table and effective radius
@@ -170,6 +186,48 @@ def _resolve(cfg, case):
     return merged
 
 
+def _abspath(path):
+    """Expand ~ and $VARS; anchor a relative path to the repo root."""
+    expanded = os.path.expanduser(os.path.expandvars(str(path)))
+    if os.path.isabs(expanded):
+        return os.path.normpath(expanded)
+    return os.path.normpath(os.path.join(REPO_DIR, expanded))
+
+
+def _resolve_output_dirs(cfg):
+    """Resolve (figures_dir, data_dir) to absolute paths.
+
+    Precedence, highest first:
+        EXOVOLC_FIGURES_DIR / EXOVOLC_DATA_DIR   (per-kind env override)
+        EXOVOLC_OUTPUT_DIR                       (env, sets both)
+        figures_dir: / data_dir:                 (YAML, per-kind)
+        output_dir:                              (YAML, sets both)
+        'figures' / 'data'                       (default)
+
+    An output_dir (from either layer) is a parent holding both, so it becomes
+    <output_dir>/figures and <output_dir>/data.  This exists so that a whole
+    batch can be pointed at a scratch filesystem with one setting -- the case
+    that motivated it was a $HOME quota blowout on an HPC batch run.
+    """
+    env_root = os.environ.get('EXOVOLC_OUTPUT_DIR')
+    yaml_root = cfg.get('output_dir')
+
+    def pick(kind):
+        env_val = os.environ.get(f'EXOVOLC_{kind.upper()}_DIR')
+        if env_val:
+            return env_val
+        if env_root:
+            return os.path.join(env_root, kind)
+        yaml_val = cfg.get(f'{kind}_dir')
+        if yaml_val:
+            return yaml_val
+        if yaml_root:
+            return os.path.join(yaml_root, kind)
+        return kind
+
+    return _abspath(pick('figures')), _abspath(pick('data'))
+
+
 _config_path = _find_config_file()
 _batch = _load_yaml(_config_path)
 CASES  = _parse_cases(_batch, _config_path)
@@ -188,8 +246,7 @@ FILE_PATTERN = _cfg['file_pattern']
 G_CONST      = float(_cfg['g_const'])
 R_AIR        = float(_cfg['r_air'])
 R_EARTH      = float(_cfg['r_earth'])
-FIGURES_DIR  = _cfg.get('figures_dir', 'figures')
-DATA_DIR     = _cfg.get('data_dir', 'data')
+FIGURES_DIR, DATA_DIR = _resolve_output_dirs(_cfg)
 
 # Variable lists: each entry is a dict with keys 'name' and 'method'
 SCALAR_VARS   = _cfg.get('scalar_vars', [])

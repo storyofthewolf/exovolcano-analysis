@@ -58,6 +58,9 @@ Any combination of these flags can be appended to the command:
 |------|--------|
 | `--time` | Print a per-section timing summary at the end |
 | `--nthreads N` | Use N dask threads (default: 8) |
+| `--output-dir DIR` | Write both figures and data under `DIR` (as `DIR/figures/`, `DIR/data/`) |
+| `--figures-dir DIR` | Root directory for PNG output (overrides `--output-dir`) |
+| `--data-dir DIR` | Root directory for CSV output (overrides `--output-dir`) |
 | `--no-scalars` | Skip scalar time series (computation + CSV) |
 | `--no-profiles` | Skip profile time series (computation + CSV) |
 | `--no-plots` | Skip all figure output (CSV data is still written) |
@@ -145,9 +148,25 @@ r_earth: 6.371e6         # mean planet radius [m]
 ### Output directories (optional)
 
 ```yaml
+output_dir:  '/scratch/$USER/exovolc'   # parent of both: <output_dir>/figures/ and /data/
 figures_dir: 'figures'   # PNGs go to figures/<exp_name>/
 data_dir:    'data'      # CSVs go to data/<exp_name>/scalar/ and .../profiles/
 ```
+
+`~` and `$VARS` are expanded, and a relative path is taken relative to the repo
+rather than the working directory, so output lands in the same place regardless
+of where the job was launched.
+
+`figures_dir`/`data_dir` override `output_dir`. Any of the three can be
+overridden per-run from the command line, which both entry points accept:
+
+```bash
+python run_batch.py exovolc_ben.yaml --output-dir /scratch/$USER/exovolc
+```
+
+**On an HPC system, do not leave these at their defaults.** A batch of ~20 cases
+will exceed a typical `$HOME` quota. Point `output_dir` at scratch or a project
+filesystem.
 
 ### Scalar time series (optional)
 

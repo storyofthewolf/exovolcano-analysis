@@ -33,6 +33,9 @@ All flags are parsed by argparse before `config.py` is imported. After parsing, 
 |------|--------|
 | `--time` | Print a per-section timing summary at the end |
 | `--nthreads N` | Use N dask threads (default: 8) |
+| `--output-dir DIR` | Write figures and data under `DIR` (`DIR/figures/`, `DIR/data/`) |
+| `--figures-dir DIR` | Root directory for PNG output (overrides `--output-dir`) |
+| `--data-dir DIR` | Root directory for CSV output (overrides `--output-dir`) |
 | `--no-scalars` | Skip scalar time series |
 | `--no-profiles` | Skip profile time series |
 | `--no-plots` | Skip all figure output (CSVs still written) |
@@ -49,7 +52,7 @@ python run_time_series.py ben2_vei7.yaml --nthreads 32 --no-zonal --time
 
 The pipeline has six modules:
 
-**`config.py`** — Loads `experiments/<name>.yaml` at import time (via CLI arg, `CONFIG` env var, or default). Stores the resolved path as `_config_path`. Exposes path constants (`ROOT_DIR`, `FIGURES_DIR`, `DATA_DIR`), physical constants (`G_CONST`, `R_AIR`, `R_EARTH`), variable lists (`SCALAR_VARS`, `PROFILE_VARS`, `ZONAL_VARS`, `ZONAL_PERIODS`), and AOD parameters (`OPTICS_FILE`, `VOLC_REFF`, `RHO_AEROSOL`, `MIE_WAVE_UM`, `MIE_N_REAL`, `MIE_N_IMAG`). `get_experiment_name()` derives the name from the YAML filename stem via `_config_path`.
+**`config.py`** — Loads `experiments/<name>.yaml` at import time (via CLI arg, `CONFIG` env var, or default). Stores the resolved path as `_config_path`. `_resolve_output_dirs()` resolves `FIGURES_DIR`/`DATA_DIR` to **absolute** paths, highest precedence first: `EXOVOLC_FIGURES_DIR`/`EXOVOLC_DATA_DIR` env → `EXOVOLC_OUTPUT_DIR` env → YAML `figures_dir`/`data_dir` → YAML `output_dir` (parent of both) → `figures`/`data`. The env vars are set by `run_time_series.py` from `--figures-dir`/`--data-dir`/`--output-dir` **before** `import config`. `~` and `$VARS` are expanded; a relative path anchors to `REPO_DIR`, not the CWD, so output does not follow the launch directory. Exposes path constants (`ROOT_DIR`, `FIGURES_DIR`, `DATA_DIR`), physical constants (`G_CONST`, `R_AIR`, `R_EARTH`), variable lists (`SCALAR_VARS`, `PROFILE_VARS`, `ZONAL_VARS`, `ZONAL_PERIODS`), and AOD parameters (`OPTICS_FILE`, `VOLC_REFF`, `RHO_AEROSOL`, `MIE_WAVE_UM`, `MIE_N_REAL`, `MIE_N_IMAG`). `get_experiment_name()` derives the name from the YAML filename stem via `_config_path`.
 
 **`compute.py`** — Pure computation engine; no I/O or side effects. Reads CAM NetCDF output via xarray/dask, builds grid geometry from hybrid pressure coordinates, and computes global diagnostics. Key functions:
 - `load_dataset()` — opens multi-file CAM NetCDF as a lazy dask-backed xarray Dataset (`chunks={'time': 200}`); extracts `gw` (Gaussian weights) from the first file separately to avoid mfdataset inflation
@@ -89,6 +92,7 @@ The pipeline has six modules:
 - Do NOT combine scalars and profiles into a single `dask.compute()` call — the combined graph causes hangs with the threaded scheduler. Keep them as separate passes.
 - `pressure_1d`/`altitude_1d` use `isel(time=0)` — this avoids a full-dataset scan just to produce axis labels.
 - On an HPC cluster, use `--nthreads 32` (or your core allocation) on a dedicated compute node (`salloc`). On a shared login node keep threads at 4–8 to avoid contention with other users. Login node timing is highly variable due to Lustre contention — not fixable in code.
+- **On an HPC cluster, always redirect output off `$HOME`** — `--output-dir /scratch/$USER/...`, or `output_dir:` in the batch YAML. A batch of ~20 cases writes enough figures and CSVs to exceed a typical `$HOME` quota, which fails the run partway through. The default (`figures/`, `data/` in the repo) is for local development only.
 
 ## Experiment YAML Schema
 
@@ -103,6 +107,12 @@ file_pattern:                   # list of NetCDF filenames (CAM h1 history)
 g_const:  9.121824              # planet-specific gravity [m/s^2]
 r_air:    188.965172522727      # gas constant for atmosphere [J/kg/K]
 r_earth:  5797410.0             # planet radius [m]
+
+# Output — omit for the repo-local defaults (figures/, data/). On HPC, set
+# output_dir to scratch: it is the parent of both, giving <output_dir>/figures/
+# and <output_dir>/data/. figures_dir/data_dir override it independently.
+# ~ and $VARS expand; relative paths anchor to the repo, not the CWD.
+output_dir: '/scratch/$USER/exovolc'
 
 scalar_vars:                    # global scalar time series to compute
   - name: SO2

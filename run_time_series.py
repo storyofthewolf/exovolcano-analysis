@@ -15,7 +15,9 @@ Usage:
   separator is present.  A fully-annotated template is at:
     experiments/template.yaml
 
-  Output goes to data/<case_name>/ and figures/<case_name>/.
+  Output goes to <data_dir>/<case_name>/ and <figures_dir>/<case_name>/,
+  which default to data/ and figures/ inside the repo.  Redirect them to
+  another filesystem with --output-dir, or with output_dir: in the YAML.
 
 Batch YAML structure
 --------------------
@@ -30,8 +32,15 @@ Batch-level keys (shared by every case in the batch)
   g_const       Surface gravity [m/s²].                          REQUIRED
   r_air         Specific gas constant of the atmosphere [J/kg/K]. REQUIRED
   r_earth       Mean planet radius [m].                          REQUIRED
+  output_dir    Parent for both outputs: <output_dir>/figures and
+                <output_dir>/data. Point this at a scratch filesystem to keep
+                a batch off a quota-limited $HOME.
   figures_dir   Root directory for PNG output  ('figures').
   data_dir      Root directory for CSV output  ('data').
+
+  Output paths expand ~ and $VARS; a relative path is taken relative to the
+  repo, not the working directory. --output-dir / --figures-dir / --data-dir
+  override the YAML for a single run.
   rho_aerosol   Bulk aerosol density [g/cm³], used by Mie path  (1.84).
   scalar_vars / profile_vars / zonal_mean_vars / zonal_mean_periods
 
@@ -108,6 +117,20 @@ _parser.add_argument(
     '--nthreads', type=int, default=8, metavar='N',
     help='Dask thread count (default: 8). Use 32 on a dedicated compute node.',
 )
+_parser.add_argument(
+    '--output-dir', metavar='DIR', default=None,
+    help='Write both figures and data under DIR (as DIR/figures/ and '
+         'DIR/data/). Use this to keep a batch off a quota-limited $HOME. '
+         'Overrides output_dir/figures_dir/data_dir in the YAML.',
+)
+_parser.add_argument(
+    '--figures-dir', metavar='DIR', default=None,
+    help='Root directory for PNG output. Overrides --output-dir and the YAML.',
+)
+_parser.add_argument(
+    '--data-dir', metavar='DIR', default=None,
+    help='Root directory for CSV output. Overrides --output-dir and the YAML.',
+)
 _parser.add_argument('--time',             action='store_true', help='Print per-section timing summary.')
 _parser.add_argument('--no-scalars',       action='store_true', help='Skip scalar time series.')
 _parser.add_argument('--no-profiles',      action='store_true', help='Skip profile time series.')
@@ -152,11 +175,17 @@ _skip_aod       = _args.no_aod
 _skip_zonal     = _args.no_zonal
 
 # config.py reads the YAML from sys.argv[1] and the case from $CASE. Rewrite
-# argv to just the YAML, and pass --case through the environment, before the
-# `import config` below triggers the load.
+# argv to just the YAML, and pass --case and the output-dir overrides through
+# the environment, before the `import config` below triggers the load.
 import os as _os_env
 if _args.case:
     _os_env.environ['CASE'] = _args.case
+for _flag, _env in (('output_dir',  'EXOVOLC_OUTPUT_DIR'),
+                    ('figures_dir', 'EXOVOLC_FIGURES_DIR'),
+                    ('data_dir',    'EXOVOLC_DATA_DIR')):
+    _val = getattr(_args, _flag)
+    if _val:
+        _os_env.environ[_env] = _val
 sys.argv = [sys.argv[0]] + ([_args.config] if _args.config else [])
 
 # ---------------------------------------------------------------------------
@@ -223,11 +252,21 @@ exp_name    = config.get_experiment_name()
 figures_dir = os.path.join(config.FIGURES_DIR, exp_name)
 data_dir    = os.path.join(config.DATA_DIR,    exp_name)
 
-os.makedirs(figures_dir, exist_ok=True)
-os.makedirs(os.path.join(data_dir,    'scalar'),   exist_ok=True)
-os.makedirs(os.path.join(data_dir,    'profiles'), exist_ok=True)
-os.makedirs(os.path.join(data_dir,    'aod'),      exist_ok=True)
-os.makedirs(os.path.join(figures_dir, 'aod'),      exist_ok=True)
+# Fail here rather than partway through a multi-hour case: a full or read-only
+# output filesystem is the failure this whole path exists to make visible.
+for _d in (figures_dir,
+           os.path.join(data_dir,    'scalar'),
+           os.path.join(data_dir,    'profiles'),
+           os.path.join(data_dir,    'aod'),
+           os.path.join(figures_dir, 'aod')):
+    try:
+        os.makedirs(_d, exist_ok=True)
+    except OSError as _e:
+        raise SystemExit(
+            f"ERROR: cannot create output directory '{_d}': {_e}\n"
+            f"       Redirect output with --output-dir /path/on/another/filesystem, "
+            f"or set output_dir: in the batch YAML."
+        )
 _stop()
 
 print(f"\nExperiment : {exp_name}")

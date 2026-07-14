@@ -48,9 +48,25 @@ file_template:   '{case}.cam.h1.*.nc'
 # =============================================================================
 # Output goes to <figures_dir>/<case_name>/ and <data_dir>/<case_name>/ —
 # one directory per case, named for the case, not the batch.
+#
+# '~' and $VARS are expanded. A relative path is taken relative to the repo,
+# NOT the working directory, so output lands in the same place no matter where
+# the job was launched from.
+#
+# On an HPC system, do not leave these at the defaults: a batch of ~20 cases
+# will blow through a typical $HOME quota. Set output_dir to a scratch or
+# project filesystem — it is the parent of both, giving
+# <output_dir>/figures/<case>/ and <output_dir>/data/<case>/:
+#
+#   output_dir: '/scratch/$USER/exovolc'
+#
+# Or set the two independently (either one overrides output_dir):
 
 figures_dir: 'figures'
 data_dir: 'data'
+
+# A single run can override all of this without editing the YAML:
+#   python run_batch.py my_batch.yaml --output-dir /scratch/$USER/exovolc
 
 
 # =============================================================================

@@ -19,6 +19,12 @@ it, every case in every listed batch is run.
 
 --dry-run prints the case list and exits without running anything.
 
+--output-dir sends every case's output to another filesystem, as
+DIR/figures/<case>/ and DIR/data/<case>/.  A batch of ~20 cases will exhaust a
+typical HPC $HOME quota, so on a cluster point this at scratch:
+
+    python run_batch.py exovolc_ben1.yaml --output-dir /scratch/$USER/exovolc
+
 All other flags are forwarded verbatim to run_time_series.py,
 e.g. --nthreads 32 --no-zonal --time
 """
@@ -86,6 +92,19 @@ def parse_args():
         '--nthreads', type=int, default=None, metavar='N',
         help='Forwarded to run_time_series.py.',
     )
+    parser.add_argument(
+        '--output-dir', metavar='DIR', default=None,
+        help='Write every case under DIR (as DIR/figures/ and DIR/data/). '
+             'Use this to keep a batch off a quota-limited $HOME.',
+    )
+    parser.add_argument(
+        '--figures-dir', metavar='DIR', default=None,
+        help='Root directory for PNG output. Overrides --output-dir.',
+    )
+    parser.add_argument(
+        '--data-dir', metavar='DIR', default=None,
+        help='Root directory for CSV output. Overrides --output-dir.',
+    )
     parser.add_argument('--time',        action='store_true')
     parser.add_argument('--no-scalars',  action='store_true')
     parser.add_argument('--no-profiles', action='store_true')
@@ -101,6 +120,10 @@ def build_forward_flags(args):
     flags = []
     if args.nthreads is not None:
         flags += ['--nthreads', str(args.nthreads)]
+    for flag in ('output_dir', 'figures_dir', 'data_dir'):
+        value = getattr(args, flag)
+        if value:
+            flags += ['--' + flag.replace('_', '-'), value]
     for flag in ('time', 'no_scalars', 'no_profiles', 'no_plots', 'no_aod', 'no_zonal'):
         if getattr(args, flag):
             flags.append('--' + flag.replace('_', '-'))
