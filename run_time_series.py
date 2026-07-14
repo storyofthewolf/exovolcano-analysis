@@ -3,37 +3,59 @@
 """
 run_time_series.py - Orchestrator for exovolcano time series analysis.
 
+Runs ONE case from a batch YAML.  To run every case in a batch, use:
+    python run_batch.py <batch>.yaml
+
 Usage:
-    python run_time_series.py <experiment>.yaml
-    python run_time_series.py experiments/<experiment>.yaml
-    CONFIG=experiments/<experiment>.yaml python run_time_series.py
+    python run_time_series.py <batch>.yaml --case <case_name>
+    python run_time_series.py <batch>.yaml            # single-case batch only
+    python run_time_series.py experiments/<batch>.yaml --case <case_name>
 
   The YAML file is looked up in the experiments/ directory unless a path
   separator is present.  A fully-annotated template is at:
     experiments/template.yaml
 
-Required YAML keys
-------------------
-  root_dir      Absolute path to the top-level CESM archive directory.
-  folder        Subdirectory under root_dir containing the NetCDF files
-                (e.g. 'run_name/atm/hist').
-  file_pattern  List of CAM h1 history filenames (basenames).
-  g_const       Surface gravity [m/s²].
-  r_air         Specific gas constant of the atmosphere [J/kg/K].
-  r_earth       Mean planet radius [m].
+  Output goes to data/<case_name>/ and figures/<case_name>/.
 
-Optional YAML keys (defaults in parentheses)
---------------------------------------------
+Batch YAML structure
+--------------------
+A batch describes one planet and the eruption cases run on it.  Geophysical
+constants are written once at batch level so they cannot drift between cases;
+the optics keys are per-case because the optics table and effective radius are
+varied within a batch.
+
+Batch-level keys (shared by every case in the batch)
+---------------------------------------------------
+  root_dir      Absolute path to the top-level CESM archive directory.
+  g_const       Surface gravity [m/s²].                          REQUIRED
+  r_air         Specific gas constant of the atmosphere [J/kg/K]. REQUIRED
+  r_earth       Mean planet radius [m].                          REQUIRED
   figures_dir   Root directory for PNG output  ('figures').
   data_dir      Root directory for CSV output  ('data').
-  optics_file   Path to volc_pw1975_n68_r1.0um_mie.nc.  Set to enable AOD;
+  rho_aerosol   Bulk aerosol density [g/cm³], used by Mie path  (1.84).
+  scalar_vars / profile_vars / zonal_mean_vars / zonal_mean_periods
+
+  folder_template   How a case name maps to its archive subdirectory.
+                    Default: '{case}/atm/hist'
+  file_template     How a case name maps to its history files.
+                    Default: '{case}.cam.h1.*.nc'
+
+Per-case keys (set under 'cases:'; a batch-level value acts as the default)
+--------------------------------------------------------------------------
+  name          Case name.  Required.  Also the output directory name.
+  optics_file   Path to the Mie optics NetCDF.  Set to enable AOD;
                 omit or set to null to skip AOD entirely.
   volc_reff     Effective particle radius [µm] for Kext lookup  (1.0).
-  rho_aerosol   Bulk aerosol density [g/cm³], used by Mie path  (1.84).
   mie_wavelength_um          Wavelength [µm] for optional single-wavelength
                              Mie AOD calculation.  Requires miepython.
   mie_refractive_index_real  Real part of complex refractive index  (1.43).
   mie_refractive_index_imag  Imaginary part, positive convention  (0.0).
+  folder / file_pattern      Escape hatch: override the derived paths.
+
+    cases:
+      - name: exovolc_ben1_h10s9        # inherits the batch optics
+      - name: exovolc_ben1_h11s10
+        volc_reff: 0.5                  # ...or overrides it
 
 scalar_vars / profile_vars sections
 ------------------------------------
@@ -73,9 +95,14 @@ _parser = argparse.ArgumentParser(
     formatter_class=argparse.RawDescriptionHelpFormatter,
 )
 _parser.add_argument(
-    'config', nargs='?', metavar='experiment.yaml',
-    help='Experiment YAML (name looked up in experiments/, or full path). '
+    'config', nargs='?', metavar='batch.yaml',
+    help='Batch YAML (name looked up in experiments/, or full path). '
          'Overrides CONFIG env var.',
+)
+_parser.add_argument(
+    '--case', metavar='NAME', default=None,
+    help='Which case in the batch to run. Required unless the batch has '
+         'exactly one case. Output goes to data/NAME/ and figures/NAME/.',
 )
 _parser.add_argument(
     '--nthreads', type=int, default=8, metavar='N',
@@ -87,19 +114,33 @@ _parser.add_argument('--no-profiles',      action='store_true', help='Skip profi
 _parser.add_argument('--no-plots',         action='store_true', help='Skip all figure output (CSVs still written).')
 _parser.add_argument('--no-aod',           action='store_true', help='Skip AOD calculation.')
 _parser.add_argument('--no-zonal',         action='store_true', help='Skip zonal mean snapshots.')
-_parser.add_argument('--list-experiments', action='store_true', help='List available experiment YAMLs and exit.')
+_parser.add_argument('--list-experiments', action='store_true',
+                     help='List available batch YAMLs and their cases, then exit.')
 
 _args = _parser.parse_args()
 
 if _args.list_experiments:
     import glob as _glob
+    import os as _os
+    import yaml as _yaml
     _yamls = sorted(_glob.glob('experiments/*.yaml'))
-    if _yamls:
-        print("Available experiments:")
-        for _y in _yamls:
-            print(f"  {_y.split('/')[-1]}")
-    else:
+    if not _yamls:
         print("No YAML files found in experiments/")
+        sys.exit(0)
+    print("Available batches:")
+    for _y in _yamls:
+        _stem = _os.path.splitext(_os.path.basename(_y))[0]
+        try:
+            with open(_y) as _f:
+                _b = _yaml.safe_load(_f) or {}
+            _cases = _b.get('cases') or []
+            _names = [c if isinstance(c, str) else c.get('name', '?') for c in _cases]
+        except Exception as _e:
+            print(f"  {_stem:<24} (unreadable: {_e})")
+            continue
+        print(f"  {_stem}  ({len(_names)} case{'' if len(_names) == 1 else 's'})")
+        for _n in _names:
+            print(f"      {_n}")
     sys.exit(0)
 
 _timing_enabled = _args.time
@@ -110,7 +151,12 @@ _skip_plots     = _args.no_plots
 _skip_aod       = _args.no_aod
 _skip_zonal     = _args.no_zonal
 
-# Rewrite sys.argv so config.py (which reads sys.argv[1]) sees only the YAML.
+# config.py reads the YAML from sys.argv[1] and the case from $CASE. Rewrite
+# argv to just the YAML, and pass --case through the environment, before the
+# `import config` below triggers the load.
+import os as _os_env
+if _args.case:
+    _os_env.environ['CASE'] = _args.case
 sys.argv = [sys.argv[0]] + ([_args.config] if _args.config else [])
 
 # ---------------------------------------------------------------------------

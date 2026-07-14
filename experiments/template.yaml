@@ -1,59 +1,67 @@
-# template.yaml — complete reference for all configurable fields.
-# Copy this file, rename it for your experiment, and fill in your values.
-# All settings in this file are read by config.py at startup.
+# template.yaml — complete reference for a BATCH configuration.
+#
+# A batch describes one planet and the eruption cases run on it. Copy this
+# file, rename it for your batch, and fill in your values.
+#
+# The split is deliberate:
+#   * Geophysical constants are a property of the PLANET, so they live at batch
+#     level and are written exactly once. Every case inherits them, so they
+#     cannot drift between cases.
+#   * The optics keys are a property of the ANALYSIS, and you vary the optics
+#     table and effective radius within a batch, so they are per-case. A
+#     batch-level value acts as the default for cases that don't override it.
 #
 # Usage:
-#   python run_time_series.py my_experiment.yaml
-#
-# Fields marked REQUIRED must be present. Fields marked OPTIONAL have defaults
-# shown; omit them to accept the default.
+#   python run_batch.py my_batch.yaml                      # every case
+#   python run_time_series.py my_batch.yaml --case my_case_01   # just one
+#   python run_time_series.py --list-experiments           # batches + cases
+
 
 # =============================================================================
-# INPUT DIRECTORY  (REQUIRED)
+# INPUT DIRECTORY  (REQUIRED, batch level)
 # =============================================================================
 
 # Absolute path to the top-level archive directory.
 root_dir: '/path/to/cesm/archive/'
 
-# Subdirectory under root_dir containing the NetCDF files.
-# For a standard CESM archive layout this is typically:
-#   'run_name/atm/hist'
-folder: 'run_name/atm/hist'
+
+# =============================================================================
+# CASE -> PATH DERIVATION  (OPTIONAL, batch level — defaults shown)
+# =============================================================================
+# Each case's input folder and history files are derived from its name, so you
+# never enumerate NetCDF filenames. '{case}' is substituted with the case name.
+#
+# The defaults match the standard CESM archive layout. Override them if your
+# archive is laid out differently (e.g. data fetched down to a flat local dir,
+# or history files whose prefix differs from the case name).
+
+folder_template: '{case}/atm/hist'
+file_template:   '{case}.cam.h1.*.nc'
+
+# file_template is globbed, so it picks up every history file for the case.
+# A case may override the result with an explicit 'folder' or 'file_pattern'
+# if it needs to (e.g. to restrict the run to a subset of files).
 
 
 # =============================================================================
-# OUTPUT DIRECTORIES  (OPTIONAL — defaults shown)
+# OUTPUT DIRECTORIES  (OPTIONAL, batch level — defaults shown)
 # =============================================================================
+# Output goes to <figures_dir>/<case_name>/ and <data_dir>/<case_name>/ —
+# one directory per case, named for the case, not the batch.
 
-# Root directory for PNG quicklook figures.
-# Actual output goes to <figures_dir>/<experiment_name>/
 figures_dir: 'figures'
-
-# Root directory for CSV data exports.
-# Actual output goes to <data_dir>/<experiment_name>/scalar/
-#                    and <data_dir>/<experiment_name>/profiles/
 data_dir: 'data'
 
 
 # =============================================================================
-# INPUT FILES  (REQUIRED)
+# PLANET-SPECIFIC PHYSICAL CONSTANTS  (REQUIRED, batch level)
 # =============================================================================
-
-# List of CAM h1 history filenames (basenames only, no directory).
-# The prefix before the first '.' is used as the experiment name for
-# output subdirectory naming, so all files must share the same prefix.
-file_pattern:
-  - 'run_name.cam.h1.0001-01-01-00000.nc'
-  - 'run_name.cam.h1.0001-04-11-00000.nc'
-  # add one line per file to include in the time series
-
-
-# =============================================================================
-# PLANET-SPECIFIC PHYSICAL CONSTANTS  (REQUIRED)
-# =============================================================================
-# These must be set to match the planet simulated. Do NOT use standard
-# Earth values for exoplanet runs — the grid geometry, layer mass, and
-# AOD calculations all depend on these.
+# These must match the planet simulated. Do NOT use standard Earth values for
+# exoplanet runs — grid geometry, layer mass, and AOD all depend on them.
+#
+# They are batch-level precisely so that a batch of ~20 cases on one planet
+# states each constant once. If two runs need different constants, they are
+# different planets and belong in different batches.
 
 # Surface gravity [m/s²]
 # Earth: 9.80665  |  example exo: 9.80665 * 0.93 = 9.121824
@@ -61,7 +69,7 @@ g_const: 9.80665
 
 # Specific gas constant of the atmosphere [J/kg/K]
 # Earth air (~N2/O2):  287.058
-# Pure CO2 atmosphere: 188.965
+# Pure CO2 atmosphere: 188.965172522727
 r_air: 287.058
 
 # Mean planetary radius [m]
@@ -70,10 +78,10 @@ r_earth: 6.371e6
 
 
 # =============================================================================
-# SCALAR TIME SERIES  (OPTIONAL — omit section to skip all scalars)
+# SCALAR TIME SERIES  (OPTIONAL, batch level — omit to skip all scalars)
 # =============================================================================
-# Each entry produces one CSV in data/<exp>/scalar/<name>.csv and one
-# quicklook PNG in figures/<exp>/.
+# Each entry produces one CSV in data/<case>/scalar/<name>.csv and one
+# quicklook PNG in figures/<case>/.
 #
 # method options:
 #
@@ -109,10 +117,10 @@ scalar_vars:
 
 
 # =============================================================================
-# VERTICAL PROFILE TIME SERIES  (OPTIONAL — omit section to skip profiles)
+# VERTICAL PROFILE TIME SERIES  (OPTIONAL, batch level — omit to skip)
 # =============================================================================
-# Each entry produces one CSV in data/<exp>/profiles/<name>.csv and one
-# Hovmoller PNG (time × pressure level) in figures/<exp>/.
+# Each entry produces one CSV in data/<case>/profiles/<name>.csv and one
+# Hovmoller PNG (time × pressure level) in figures/<case>/.
 # Profiles are always the area-weighted global mean at each model level.
 # The 'method' key is accepted for forward-compatibility but is ignored.
 
@@ -130,47 +138,15 @@ profile_vars:
 
 
 # =============================================================================
-# AOD CALCULATION  (OPTIONAL — omit optics_file or leave it null to skip AOD)
-# =============================================================================
-# AOD requires the VOLCHZMD variable to be present in the CAM output.
-# When optics_file is set, the band-interpolated 550 nm AOD is always
-# computed.  The Mie block below is an additional optional calculation.
-
-# Effective particle radius [µm] used for Kext interpolation / Mie calculation.
-# Default: 1.0
-volc_reff: 1.0
-
-# Bulk aerosol density [g/cm³].  Used only by the Mie calculation.
-# Sulfuric acid / water solution: ~1.84 g/cm³
-# Default: 1.84
-rho_aerosol: 1.84
-
-# Path to the pre-computed Mie optics NetCDF file (volc_pw1975_n68_r1.0um_mie.nc).
-# Set this to the actual path on your system to enable AOD output.
-# Omit this key (or set to null) to skip all AOD calculations.
-optics_file: '/path/to/volc_pw1975_n68_r1.0um_mie.nc'
-
-# ---------------------------------------------------------------------------
-# Optional: single-wavelength Mie AOD at a custom wavelength
-# Uncomment all three lines to enable.  Requires miepython to be installed.
-# Produces an additional timeseries and zonal Hovmoller plot pair.
-# ---------------------------------------------------------------------------
-# mie_wavelength_um: 0.55          # wavelength [µm]
-# mie_refractive_index_real: 1.43  # real part of complex refractive index
-# mie_refractive_index_imag: 0.0   # imaginary part (positive convention)
-
-
-# =============================================================================
-# ZONAL MEAN SNAPSHOTS  (OPTIONAL — omit either section to skip all zonal output)
+# ZONAL MEAN SNAPSHOTS  (OPTIONAL, batch level — omit either section to skip)
 # =============================================================================
 # Produces one PNG and one CSV per (variable, day) combination.
-# Output goes to figures/<exp>/zonal/ and data/<exp>/zonal/.
+# Output goes to figures/<case>/zonal/ and data/<case>/zonal/.
 #
 # Variables in LOG_SCALE_DECADES (SO2, H2SO4, Q, VOLCHZMD) use LogNorm
 # colormaps; all others use linear scale with 2nd-98th percentile clipping.
 #
 # CSV format: rows = pressure levels [mb], columns = latitudes [degrees].
-# First row is a header: pressure_mb, lat1, lat2, ...
 
 zonal_mean_vars:
   - name: T
@@ -180,3 +156,63 @@ zonal_mean_vars:
 
 zonal_mean_periods:
   increment: [0, 1, 4, 10, 50, 100]   # days since start
+
+
+# =============================================================================
+# AEROSOL OPTICS  (per-case keys; a batch-level value is the default)
+# =============================================================================
+# AOD requires the VOLCHZMD variable to be present in the CAM output.
+# Omit optics_file (or set it to null) to skip AOD entirely.
+#
+# optics_file and volc_reff are PER-CASE: set them here to establish the
+# batch default, then override them on individual cases below. rho_aerosol
+# is batch-level (it is a property of the aerosol, not of the analysis).
+
+# Path to the pre-computed Mie optics NetCDF (volc_pw1975_n68_r1.0um_mie.nc).
+optics_file: '/path/to/volc_pw1975_n68_r1.0um_mie.nc'
+
+# Effective particle radius [µm] used for Kext interpolation / Mie calculation.
+volc_reff: 1.0
+
+# Bulk aerosol density [g/cm³] (batch level). Used only by the Mie path.
+# Sulfuric acid / water solution: ~1.84 g/cm³
+rho_aerosol: 1.84
+
+# ---------------------------------------------------------------------------
+# Optional: single-wavelength Mie AOD at a custom wavelength (per-case).
+# Uncomment all three to enable. Requires miepython.
+# Produces an additional timeseries and zonal Hovmoller plot pair.
+# ---------------------------------------------------------------------------
+# mie_wavelength_um: 0.55          # wavelength [µm]
+# mie_refractive_index_real: 1.43  # real part of complex refractive index
+# mie_refractive_index_imag: 0.0   # imaginary part (positive convention)
+
+
+# =============================================================================
+# CASES  (REQUIRED)
+# =============================================================================
+# The eruption cases in this batch — typically ~20. Each case is one line
+# unless it overrides something. The case name is also its output directory.
+#
+# A case may set only these keys:
+#     name          (required — and must be unique within the batch)
+#     optics_file, volc_reff
+#     mie_wavelength_um, mie_refractive_index_real, mie_refractive_index_imag
+#     folder, file_pattern   (escape hatch; normally derived from the name)
+#
+# Anything else belongs at batch level. Setting a batch-level key on a case is
+# an error, so a constant like r_air cannot drift between cases.
+
+cases:
+  # Plain name: inherits every batch default above.
+  - name: my_case_h10s9
+  - name: my_case_h11s10
+
+  # Override the effective radius for this case only.
+  - name: my_case_h12s11
+    volc_reff: 0.5
+
+  # Different optics table AND radius.
+  - name: my_case_h13s12
+    optics_file: '/path/to/volc_pw1975_n68_r2.0um_mie.nc'
+    volc_reff: 2.0
