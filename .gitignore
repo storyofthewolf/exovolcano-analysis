@@ -12,6 +12,9 @@ __pycache__/
 *.pt
 *.png
 
+# allow optical property netcdfs
+!data/optprops/*.nc
+
 #Apple nonsense
 .DS_Store
 
