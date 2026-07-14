@@ -1,0 +1,127 @@
+# Batch: Tambora eruption sensitivity suite — modern Earth.
+#
+# 22 cases. Two families:
+#   * a duration sweep (k*d) and a supersaturation sweep (scrit*) at the
+#     default radius;
+#   * a set anchored at k35d that sweeps radius (r*), plume (p*), and sigma
+#     (sig*) — the r0.5 in those names pins the radius at the batch default
+#     while the other axis varies.
+#
+#   k*d          eruption duration [days]
+#   r*           CARMA effective particle radius [µm]  <- overrides the optics
+#   p*           plume parameter
+#   sig*         size-distribution width
+#   scrit*       critical supersaturation
+
+root_dir: '/gpfsm/dnb33/etwolf/cesm_scratch/archive/'
+
+# Standard CESM archive layout, so folder_template / file_template are left at
+# their defaults ('{case}/atm/hist' and '{case}.cam.h1.*.nc'). History files are
+# globbed — no need to enumerate them.
+
+# --- Planet: modern Earth (written once; every case inherits) ---
+g_const: 9.80665    # standard Earth (m/s^2)
+r_air:   287.058    # Earth air, ~N2/O2 (J/kg/K)
+r_earth: 6.371e6    # (m)
+
+figures_dir: 'figures'
+data_dir:    'data'
+
+scalar_vars:
+  - name: SO2
+    method: mass_integral
+  - name: H2SO4
+    method: mass_integral
+  - name: VOLCHZMD
+    method: volume_integral
+  - name: Q
+    method: mass_integral
+  - name: TS
+    method: area_mean
+  - name: TGCLDLWP
+    method: area_mean
+  - name: TMQ
+    method: area_mean
+
+profile_vars:
+  - name: T
+    method: area_mean
+  - name: SO2
+    method: area_mean
+  - name: H2SO4
+    method: area_mean
+  - name: Q
+    method: area_mean
+  - name: VOLCHZMD
+    method: area_mean
+
+zonal_mean_vars:
+  - name: T
+  - name: SO2
+  - name: H2SO4
+  - name: VOLCHZMD
+
+zonal_mean_periods:
+  increment: [0, 1, 4, 10, 50, 100]   # days since start
+
+# --- Aerosol optics ---
+# Batch default: every case ran with carma_volc_reff = 0.5 µm, so the r0.5um
+# Mie table is the default. Only the radius sweep overrides it — keep
+# optics_file and volc_reff consistent, the file IS the Mie table for that
+# radius.
+#
+# Note the '_r0.5_' cases below (p10/p100/sig*) hold the radius AT the default
+# while sweeping another axis, so they simply inherit — no override needed.
+optics_file: 'data/optprops/volc_pw1975_n68_r0.5um_mie.nc'
+volc_reff:   0.5
+rho_aerosol: 1.84
+
+cases:
+  # --- Eruption duration sweep [days] ---
+  - name: exovolc_tambora_k2.5d
+  - name: exovolc_tambora_k15d
+  - name: exovolc_tambora_k20d
+  - name: exovolc_tambora_k25d
+  - name: exovolc_tambora_k30d
+  - name: exovolc_tambora_k35d
+  - name: exovolc_tambora_k40d
+  - name: exovolc_tambora_k45d
+  - name: exovolc_tambora_k50d
+  - name: exovolc_tambora_k250d
+
+  # --- Effective radius sweep at k35d: these override the batch optics ---
+  # NOTE: volc_pw1975_n68_r0.25um_mie.nc is NOT in data/optprops/ on the local
+  # machine (only r0.5, r1.0, r2.0 are). This path is correct for the cluster;
+  # locally, AOD for this case will fail until the table is copied in. Run with
+  # --no-aod, or set optics_file: null here, if you hit that before it exists.
+  - name: exovolc_tambora_k35d_r0.25
+    optics_file: 'data/optprops/volc_pw1975_n68_r0.25um_mie.nc'
+    volc_reff:   0.25
+
+  # Same radius as the batch default; stated explicitly so the sweep reads as a
+  # set rather than one case silently relying on the default.
+  - name: exovolc_tambora_k35d_r0.5
+    optics_file: 'data/optprops/volc_pw1975_n68_r0.5um_mie.nc'
+    volc_reff:   0.5
+
+  - name: exovolc_tambora_k35d_r1
+    optics_file: 'data/optprops/volc_pw1975_n68_r1.0um_mie.nc'
+    volc_reff:   1.0
+
+  - name: exovolc_tambora_k35d_r2
+    optics_file: 'data/optprops/volc_pw1975_n68_r2.0um_mie.nc'
+    volc_reff:   2.0
+
+  # --- Plume sweep at k35d, radius held at the 0.5 µm default ---
+  - name: exovolc_tambora_k35d_r0.5_p10
+  - name: exovolc_tambora_k35d_r0.5_p100
+
+  # --- Sigma sweep at k35d, radius held at the 0.5 µm default ---
+  - name: exovolc_tambora_k35d_r0.5_sig0.1
+  - name: exovolc_tambora_k35d_r0.5_sig0.5
+  - name: exovolc_tambora_k35d_r0.5_sig0.7
+
+  # --- Critical supersaturation sweep ---
+  - name: exovolc_tambora_scrit1.1
+  - name: exovolc_tambora_scrit2
+  - name: exovolc_tambora_scrit5

@@ -1,0 +1,116 @@
+# Batch: Pinatubo eruption sensitivity suite — modern Earth.
+#
+# 17 cases sweeping eruption and microphysics parameters:
+#   fid          reference / fiducial run
+#   k*d          eruption duration [days]
+#   p*           plume parameter
+#   r*           CARMA effective particle radius [µm]  <- overrides the optics
+#   scrit*       critical supersaturation
+#   so2_*tg      SO2 mass injected [Tg]
+
+root_dir: '/gpfsm/dnb33/etwolf/cesm_scratch/archive/'
+
+# Standard CESM archive layout, so folder_template / file_template are left at
+# their defaults ('{case}/atm/hist' and '{case}.cam.h1.*.nc'). History files are
+# globbed — no need to enumerate them.
+
+# --- Planet: modern Earth (written once; every case inherits) ---
+g_const: 9.80665    # standard Earth (m/s^2)
+r_air:   287.058    # Earth air, ~N2/O2 (J/kg/K)
+r_earth: 6.371e6    # (m)
+
+figures_dir: 'figures'
+data_dir:    'data'
+
+scalar_vars:
+  - name: SO2
+    method: mass_integral
+  - name: H2SO4
+    method: mass_integral
+  - name: VOLCHZMD
+    method: volume_integral
+  - name: Q
+    method: mass_integral
+  - name: TS
+    method: area_mean
+  - name: TGCLDLWP
+    method: area_mean
+  - name: TMQ
+    method: area_mean
+
+profile_vars:
+  - name: T
+    method: area_mean
+  - name: SO2
+    method: area_mean
+  - name: H2SO4
+    method: area_mean
+  - name: Q
+    method: area_mean
+  - name: VOLCHZMD
+    method: area_mean
+
+zonal_mean_vars:
+  - name: T
+  - name: SO2
+  - name: H2SO4
+  - name: VOLCHZMD
+
+zonal_mean_periods:
+  increment: [0, 1, 4, 10, 50, 100]   # days since start
+
+# --- Aerosol optics ---
+# Batch default: every case ran with carma_volc_reff = 0.5 µm, so the r0.5um
+# Mie table is the default. The four '_r*' cases are the radius sweep and
+# override both keys below — keep optics_file and volc_reff consistent, the
+# file IS the Mie table for that radius.
+optics_file: 'data/optprops/volc_pw1975_n68_r0.5um_mie.nc'
+volc_reff:   0.5
+rho_aerosol: 1.84
+
+cases:
+  # --- Fiducial ---
+  - name: exovolc_pinatubo_fid
+
+  # --- Eruption duration sweep [days] ---
+  - name: exovolc_pinatubo_k2.5d
+  - name: exovolc_pinatubo_k20d
+  - name: exovolc_pinatubo_k30d
+  - name: exovolc_pinatubo_k35d
+  - name: exovolc_pinatubo_k47d
+
+  # --- Plume parameter sweep ---
+  - name: exovolc_pinatubo_p20
+  - name: exovolc_pinatubo_p100
+
+  # --- Effective radius sweep: these override the batch optics ---
+  # NOTE: volc_pw1975_n68_r0.25um_mie.nc is NOT in data/optprops/ on the local
+  # machine (only r0.5, r1.0, r2.0 are). This path is correct for the cluster;
+  # locally, AOD for this case will fail until the table is copied in. Run with
+  # --no-aod, or set optics_file: null here, if you hit that before it exists.
+  - name: exovolc_pinatubo_r0.25
+    optics_file: 'data/optprops/volc_pw1975_n68_r0.25um_mie.nc'
+    volc_reff:   0.25
+
+  # Same radius as the batch default; stated explicitly so the sweep reads as a
+  # set rather than one case silently relying on the default.
+  - name: exovolc_pinatubo_r0.5
+    optics_file: 'data/optprops/volc_pw1975_n68_r0.5um_mie.nc'
+    volc_reff:   0.5
+
+  - name: exovolc_pinatubo_r1
+    optics_file: 'data/optprops/volc_pw1975_n68_r1.0um_mie.nc'
+    volc_reff:   1.0
+
+  - name: exovolc_pinatubo_r2
+    optics_file: 'data/optprops/volc_pw1975_n68_r2.0um_mie.nc'
+    volc_reff:   2.0
+
+  # --- Critical supersaturation sweep ---
+  - name: exovolc_pinatubo_scrit1.1
+  - name: exovolc_pinatubo_scrit2
+  - name: exovolc_pinatubo_scrit5
+
+  # --- SO2 mass sweep [Tg] ---
+  - name: exovolc_pinatubo_so2_14tg
+  - name: exovolc_pinatubo_so2_23tg

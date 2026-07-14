@@ -1,0 +1,74 @@
+# Batch: exovolc "ben" planet — pure CO2 atmosphere, 0.93 g, 0.91 R_earth.
+#
+# Converted from the former ben1_vei7.yaml / ben2_vei7.yaml. Those two files
+# disagreed on r_air (ben1 had 288.965, a typo for the 188.965 the planet
+# actually has); stating it once, here, is the point of the batch format.
+
+root_dir: '/Users/wolfe/Desktop/projects/volcanos/runs/'
+
+# These runs were fetched down from HPC into a flat per-case directory, and
+# their history-file prefix ('exovolc_ben1') differs from the directory name
+# ('ben1_vei7'), so file_pattern is set explicitly per case below.
+# New cases that follow the convention <case>/atm/hist + <case>.cam.h1.*.nc
+# need neither override — just a name.
+folder_template: '{case}'
+
+# --- Planet (written once; every case inherits) ---
+g_const: 9.121824          # 9.80665 * 0.93  (m/s^2)
+r_air:   188.965172522727  # pure CO2 atmosphere (J/kg/K)
+r_earth: 5797410.0         # 6.371e6 * 0.91  (m)
+
+figures_dir: 'figures'
+data_dir:    'data'
+
+scalar_vars:
+  - name: SO2
+    method: mass_integral
+  - name: H2SO4
+    method: mass_integral
+  - name: VOLCHZMD
+    method: volume_integral
+  - name: Q
+    method: mass_integral
+  - name: TS
+    method: area_mean
+  - name: TGCLDLWP
+    method: area_mean
+  - name: TMQ
+    method: area_mean
+
+profile_vars:
+  - name: T
+    method: area_mean
+  - name: SO2
+    method: area_mean
+  - name: H2SO4
+    method: area_mean
+  - name: Q
+    method: area_mean
+  - name: VOLCHZMD
+    method: area_mean
+
+# --- Aerosol optics: batch defaults, overridable per case ---
+# The optics tables live in this repo at data/optprops/, one per radius.
+# This is the batch DEFAULT; a case overrides it to be analysed at a different
+# effective radius. Keep optics_file and volc_reff consistent — the file is the
+# Mie table for that radius.
+#
+# (Neither ben1 nor ben2 previously had a working optics_file — ben1 had none,
+# ben2 had the literal '/path/to/...' placeholder — so AOD silently skipped for
+# both.)
+optics_file: 'data/optprops/volc_pw1975_n68_r1.0um_mie.nc'
+volc_reff:   1.0
+rho_aerosol: 1.84
+
+cases:
+  # Inherits the r=1.0µm optics above.
+  - name: ben1_vei7
+    file_pattern: 'exovolc_ben1.cam.h1.*.nc'
+
+  # Same run, analysed at a larger effective radius.
+  - name: ben2_vei7
+    file_pattern: 'exovolc_ben2.cam.h1.*.nc'
+    optics_file: 'data/optprops/volc_pw1975_n68_r2.0um_mie.nc'
+    volc_reff:   2.0

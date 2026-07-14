@@ -1,0 +1,89 @@
+# Batch: exovolc "hab" planet — 0.93 g, 0.91 R_earth, r_air = 288.965.
+#
+# Converted from the former hab1_vei7.yaml / hab2_vei7.yaml.
+#
+# NOTE ON r_air: this batch uses 288.965172522727, which is DIFFERENT from the
+# 188.965172522727 of the 'ben' batch. Per the run owner this difference is
+# intentional (a different atmospheric composition), which is why these are two
+# batches and not one. The 'pure CO2 atmosphere' comment carried on the old
+# hab YAMLs was inherited from the ben files and did not describe this planet;
+# it has been dropped rather than propagated.
+
+root_dir: '/Users/wolfe/Desktop/projects/volcanos/runs/'
+
+# Fetched down from HPC into flat per-case directories. hab1's history files
+# are prefixed 'exovolc_hab1' rather than its directory name, so it overrides
+# file_pattern; hab2 follows the convention and needs no override.
+folder_template: '{case}'
+
+# --- Planet (written once; every case inherits) ---
+g_const: 9.121824          # 9.80665 * 0.93  (m/s^2)
+r_air:   288.965172522727  # (J/kg/K)
+r_earth: 5797410.0         # 6.371e6 * 0.91  (m)
+
+figures_dir: 'figures'
+data_dir:    'data'
+
+scalar_vars:
+  - name: SO2
+    method: mass_integral
+  - name: H2SO4
+    method: mass_integral
+  - name: VOLCHZMD
+    method: volume_integral
+  - name: Q
+    method: mass_integral
+  - name: TS
+    method: area_mean
+  - name: TGCLDLWP
+    method: area_mean
+  - name: TMQ
+    method: area_mean
+
+profile_vars:
+  - name: T
+    method: area_mean
+  - name: SO2
+    method: area_mean
+  - name: H2SO4
+    method: area_mean
+  - name: Q
+    method: area_mean
+  - name: VOLCHZMD
+    method: area_mean
+
+zonal_mean_vars:
+  - name: T
+  - name: SO2
+  - name: H2SO4
+  - name: VOLCHZMD
+
+zonal_mean_periods:
+  increment: [0, 1, 4, 10, 50, 100]   # days since start
+
+# --- Aerosol optics: batch defaults, overridable per case ---
+# The optics tables live in this repo at data/optprops/, one per radius:
+#   volc_pw1975_n68_r0.5um_mie.nc
+#   volc_pw1975_n68_r1.0um_mie.nc
+#   volc_pw1975_n68_r2.0um_mie.nc
+# The optics_file and volc_reff below are the batch DEFAULT; a case overrides
+# them to be analysed at a different radius. Keep the two consistent — the file
+# is the Mie table for that radius.
+#
+# (The old hab1_vei7.yaml pointed at a stale path in a sibling repo, with a
+# doubled slash and an 'r1um' spelling that no file uses; hab2 had no
+# optics_file at all, so AOD silently skipped for it.)
+optics_file: 'data/optprops/volc_pw1975_n68_r1.0um_mie.nc'
+volc_reff:   1.0
+rho_aerosol: 1.84
+
+mie_wavelength_um:         0.55
+mie_refractive_index_real: 1.43
+mie_refractive_index_imag: 0.0
+
+cases:
+  - name: hab1_vei7
+    file_pattern: 'exovolc_hab1.cam.h1.*.nc'
+
+  # Inherits the r=1.0µm optics above.
+  - name: hab2_vei7

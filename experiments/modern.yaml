@@ -1,0 +1,69 @@
+# Batch: modern Earth — standard Earth constants.
+#
+# Converted from the former modern_pintubao_std.yaml / modern_vei6.yaml.
+#
+# NOTE ON CONSTANTS: the two source files disagreed —
+#   modern_pintubao_std : g_const 9.80665,  r_air 287.058   (correct Earth)
+#   modern_vei6         : g_const 9.80655,  r_air 288.      (transposed digits
+#                         and a rounded r_air, both carrying a stale 'pure CO2
+#                         atmosphere' comment copied from an exoplanet file)
+# Standard Earth values are used here for both cases. modern_vei6 results
+# produced before this conversion were computed with the wrong constants and
+# should be regenerated.
+
+root_dir: '/Users/wolfe/Desktop/projects/volcanos/runs/'
+
+# Both cases are the same CAM run ('cam_mixed_fv_modern_eruption') archived
+# into differently-named directories, so the case name maps to neither the
+# folder nor the file prefix. Each case therefore sets both explicitly.
+folder_template: '{case}'
+
+# --- Planet (written once; every case inherits) ---
+g_const: 9.80665    # standard Earth (m/s^2)
+r_air:   287.058    # Earth air, ~N2/O2 (J/kg/K)
+r_earth: 6.371e6    # (m)
+
+figures_dir: 'figures'
+data_dir:    'data'
+
+scalar_vars:
+  - name: SO2
+    method: mass_integral
+  - name: H2SO4
+    method: mass_integral
+  - name: VOLCHZMD
+    method: volume_integral
+  - name: Q
+    method: mass_integral
+  - name: TS
+    method: area_mean
+  - name: TGCLDLWP
+    method: area_mean
+  - name: TMQ
+    method: area_mean
+
+profile_vars:
+  - name: T
+    method: area_mean
+  - name: SO2
+    method: area_mean
+  - name: H2SO4
+    method: area_mean
+  - name: Q
+    method: area_mean
+  - name: VOLCHZMD
+    method: area_mean
+
+# --- Aerosol optics: batch defaults, overridable per case ---
+optics_file: null
+volc_reff:   1.0
+rho_aerosol: 1.84
+
+cases:
+  - name: modern_pintubao_std
+    file_pattern: 'cam_mixed_fv_modern_eruption.cam.h1.*.nc'
+
+  # Was on the HPC archive under a CESM-standard layout, not fetched locally.
+  - name: modern_vei6
+    folder: 'cam_mixed_fv_modern_eruption/atm/hist'
+    file_pattern: 'cam_mixed_fv_modern_eruption.cam.h1.*.nc'

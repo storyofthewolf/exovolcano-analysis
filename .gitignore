@@ -17,9 +17,4 @@ __pycache__/
 
 *~
 
-# Ignore experiment configs except template
-experiments/*.yaml
-experiments/*
-!experiments/template.yaml
-
 .claude/

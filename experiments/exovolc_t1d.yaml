@@ -1,0 +1,53 @@
+# Batch: TRAPPIST-1d — pure CO2 atmosphere, 0.624 g, 0.788 R_earth.
+#
+# Converted from the former t1d_vei7.yaml.
+
+root_dir: '/Users/wolfe/Desktop/projects/volcanos/runs/'
+
+# Fetched down from HPC into a flat per-case directory whose name matches the
+# history-file prefix, so no per-case overrides are needed.
+folder_template: '{case}'
+
+# --- Planet (written once; every case inherits) ---
+g_const: 6.11904384        # 9.80665 * 0.624  (m/s^2)
+r_air:   188.965172522727  # pure CO2 atmosphere (J/kg/K)
+r_earth: 5020521.36        # 0.788 * 6.37122e6  (m)
+
+figures_dir: 'figures'
+data_dir:    'data'
+
+scalar_vars:
+  - name: SO2
+    method: mass_integral
+  - name: H2SO4
+    method: mass_integral
+  - name: VOLCHZMD
+    method: volume_integral
+  - name: Q
+    method: mass_integral
+  - name: TS
+    method: area_mean
+  - name: TGCLDLWP
+    method: area_mean
+  - name: TMQ
+    method: area_mean
+
+profile_vars:
+  - name: T
+    method: area_mean
+  - name: SO2
+    method: area_mean
+  - name: H2SO4
+    method: area_mean
+  - name: Q
+    method: area_mean
+  - name: VOLCHZMD
+    method: area_mean
+
+# --- Aerosol optics: batch defaults, overridable per case ---
+optics_file: null
+volc_reff:   1.0
+rho_aerosol: 1.84
+
+cases:
+  - name: t1d_vei7
