@@ -15,6 +15,9 @@ __pycache__/
 # allow optical property netcdfs
 !data/optprops/*.nc
 
+# Personal fetch config (host/paths); commit fetch_config.yaml.example instead
+fetch_config.yaml
+
 #Apple nonsense
 .DS_Store
 

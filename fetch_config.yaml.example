@@ -1,0 +1,12 @@
+# fetch_exovolc.py configuration — copy to fetch_config.yaml and edit.
+#
+# fetch_config.yaml is git-ignored so your personal host/paths stay out of
+# version control. Precedence (highest first):
+#     CLI flags  >  environment variables  >  this file  >  built-in defaults
+# The matching env vars are EXOVOLC_HOST / EXOVOLC_REMOTE_BASE / EXOVOLC_LOCAL_BASE.
+#
+# ~ and $VARS are expanded in the path values.
+
+remote_host: 'etwolf@discover.nccs.nasa.gov'
+remote_base: '/gpfsm/dnb07/projects/p54/users/etwolf/exovolc'
+local_base:  '~/Desktop/projects/volcanos/remote_analysis'
