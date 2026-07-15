@@ -313,6 +313,117 @@ This is useful for wavelengths outside the optics table or for sensitivity tests
 
 ---
 
+## Fetching results from the HPC (`fetch_exovolc.py`)
+
+Simulations run on the HPC (NCCS Discover); this repo analyzes them locally.
+`fetch_exovolc.py` rsyncs only the small derived analysis output (CSVs + PNGs)
+down from the cluster — never the multi-TB raw CAM history.
+
+### One-time SSH setup (ControlMaster)
+
+Discover requires interactive 2FA (PASSCODE + password) on every SSH
+connection, so scripts that make many connections need a persistent shared
+connection. Set that up once per machine.
+
+Add to `~/.ssh/config` (the gateway host gets its own block because the
+`ProxyCommand` hops through it):
+
+```sshconfig
+host discover.nccs.nasa.gov
+    User etwolf
+    LogLevel Quiet
+    ProxyCommand ssh -l etwolf login.nccs.nasa.gov direct %h
+    Protocol 2
+    ControlMaster auto
+    ControlPath ~/.ssh/sockets/%r@%h-%p
+    ControlPersist 4h
+
+host login.nccs.nasa.gov
+    User etwolf
+    ControlMaster auto
+    ControlPath ~/.ssh/sockets/%r@%h-%p
+    ControlPersist 4h
+```
+
+Then create the socket directory (SSH requires `700`):
+
+```bash
+mkdir -p ~/.ssh/sockets && chmod 700 ~/.ssh/sockets
+```
+
+### Per-session login
+
+Open the master connection once — you'll be prompted for PASSCODE + Password a
+single time, then it backgrounds itself:
+
+```bash
+ssh -fN etwolf@discover.nccs.nasa.gov     # authenticate; opens the master
+ssh -O check etwolf@discover.nccs.nasa.gov   # optional: "Master running (pid=...)"
+```
+
+All subsequent `ssh`/`rsync` — including from `fetch_exovolc.py` — reuse that
+connection with no prompt, until it expires (`ControlPersist 4h` idle). If a
+fetch fails with an auth/`ssh_askpass` error, the master has expired; re-run
+`ssh -fN ...`.
+
+### Configuration
+
+Host and paths live in a git-ignored `fetch_config.yaml` next to the script
+(copy `fetch_config.yaml.example` and edit). Resolution order, highest first:
+
+```
+CLI flags  >  env vars (EXOVOLC_HOST / EXOVOLC_REMOTE_BASE / EXOVOLC_LOCAL_BASE)
+           >  fetch_config.yaml  >  built-in defaults
+```
+
+### Usage
+
+```bash
+# List every batch and case discovered on the remote (one SSH call, no fetch)
+python fetch_exovolc.py --list
+
+# Fetch whole batches (each NAME expands to all its cases)
+python fetch_exovolc.py pinatubo tambora hunga
+
+# Fetch a single case by its full name
+python fetch_exovolc.py exovolc_pinatubo_fid
+
+# Preview without copying
+python fetch_exovolc.py pinatubo --dry-run
+
+# Every case on the remote / a prefix match / only one subtree
+python fetch_exovolc.py --all
+python fetch_exovolc.py --prefix exovolc_tambora_k35d
+python fetch_exovolc.py pinatubo --data-only     # or --figures-only
+```
+
+Each `NAME` is either a **batch** (e.g. `pinatubo`, expands to all its cases)
+or a full **case** name (e.g. `exovolc_pinatubo_fid`).
+
+### Remote and local layout
+
+A batch run writes, on the remote:
+
+```
+<remote_base>/<batch>/data/<case>/{scalar,profiles,aod,zonal}/
+<remote_base>/<batch>/figures/<case>/{,aod,zonal}/
+```
+
+where `<batch>` is a grouping (`pinatubo`, `tambora`, `hunga`) and `<case>` is
+the globally unique case name (`exovolc_<batch>_<suffix>`). Cases are
+discovered **structurally** — any folder under `<remote_base>` with a
+`data/`/`figures/` case tree is a batch; there is no hardcoded batch list.
+
+Locally the batch grouping is preserved and the duplicated `<case>` level is
+flattened out:
+
+```
+<local_base>/<batch>/<case>/data/{scalar,profiles,aod,zonal}/
+<local_base>/<batch>/<case>/figures/{,aod,zonal}/
+```
+
+---
+
 ## Code structure
 
 ```
