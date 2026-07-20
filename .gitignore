@@ -12,7 +12,10 @@ __pycache__/
 *.pt
 *.png
 *.out
-*.txt
+experiments/*.txt
+
+# ignore experiment output folders; keep the YAMLs
+experiments/*/
 
 # allow optical property netcdfs
 !data/optprops/*.nc
