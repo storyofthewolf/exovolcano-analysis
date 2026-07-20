@@ -43,7 +43,7 @@ set -u
 source /usr/share/lmod/lmod/init/bash
 module load python/GEOSpyD/25.3.1-0/3.13
 
-REPO=/gpfsm/dhome/etwolf/pythonWorkspace/exovolcano-analysis-scripts
+REPO=/gpfsm/dhome/etwolf/pythonWorkspace/exovolcano-analysis
 
 # Must match remote_base in fetch_config.yaml, otherwise fetch_exovolc.py will
 # not find what this run produces. fetch expects <remote_base>/<batch>/{data,
