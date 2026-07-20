@@ -89,6 +89,11 @@ def parse_args():
         help='List the cases that would run, then exit.',
     )
     parser.add_argument(
+        '--yes', '-y', action='store_true',
+        help='Skip the confirmation prompt. Implied when stdin is not a TTY, '
+             'so batch scheduler jobs (sbatch) run unattended.',
+    )
+    parser.add_argument(
         '--nthreads', type=int, default=None, metavar='N',
         help='Forwarded to run_time_series.py.',
     )
@@ -182,38 +187,67 @@ def main():
 
     forward_flags = build_forward_flags(args)
 
-    try:
-        answer = input("\nProceed? [y/N] ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        print("\nAborted.")
-        sys.exit(0)
-    if answer not in ('y', 'yes'):
-        print("Aborted.")
-        sys.exit(0)
+    # Under sbatch there is no TTY, so prompting would raise EOFError and abort
+    # the whole batch without running a single case -- an exit-0 no-op that
+    # reads as success in the job log. Only prompt when someone is watching.
+    if not (args.yes or not sys.stdin.isatty()):
+        try:
+            answer = input("\nProceed? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\nAborted.")
+            sys.exit(0)
+        if answer not in ('y', 'yes'):
+            print("Aborted.")
+            sys.exit(0)
 
     results = []
     t_batch_start = time.perf_counter()
+    interrupted = False
 
-    for batch_path, case in jobs:
-        returncode, elapsed = run_one(batch_path, case, forward_flags)
-        status = 'OK' if returncode == 0 else f'FAILED (exit {returncode})'
-        results.append((case, status, elapsed))
+    # A 50+ case batch runs for hours. If it is cut short -- Ctrl-C, or the
+    # scheduler killing the job at its walltime -- still report what finished,
+    # so the survivors can be skipped on the next attempt with --case.
+    try:
+        for batch_path, case in jobs:
+            returncode, elapsed = run_one(batch_path, case, forward_flags)
+            status = 'OK' if returncode == 0 else f'FAILED (exit {returncode})'
+            results.append((case, status, elapsed))
+    except KeyboardInterrupt:
+        interrupted = True
+        print("\n\nInterrupted -- reporting cases finished so far.")
+
+    if not results:
+        print("\nNo cases ran.")
+        sys.exit(1)
 
     # Summary
     total_elapsed = time.perf_counter() - t_batch_start
     print(f"\n{'=' * 60}")
-    print(f"  Batch summary  ({len(jobs)} cases,  {total_elapsed:.1f} s total)")
+    print(f"  Batch summary  ({len(results)} of {len(jobs)} cases,  "
+          f"{total_elapsed:.1f} s total)")
     print(f"{'=' * 60}")
     col_w = max(len(r[0]) for r in results)
     for name, status, elapsed in results:
         print(f"  {name:<{col_w}}   {elapsed:>8.1f} s   {status}")
 
-    n_failed = sum(1 for _, s, _ in results if s != 'OK')
-    if n_failed:
-        print(f"\n{n_failed} case(s) FAILED.")
+    failed = [n for n, s, _ in results if s != 'OK']
+    remaining = [c for _, c in jobs[len(results):]]
+
+    if failed:
+        print(f"\n{len(failed)} case(s) FAILED:")
+        for name in failed:
+            print(f"  {name}")
+    if remaining:
+        print(f"\n{len(remaining)} case(s) never ran.")
+    if failed or remaining:
+        # Re-run just the unfinished work.
+        retry = ' '.join(f'--case {c}' for c in failed + remaining)
+        print(f"\nTo retry those cases:\n  {retry}")
         sys.exit(1)
-    else:
-        print(f"\nAll cases completed successfully.")
+
+    if interrupted:
+        sys.exit(1)
+    print(f"\nAll cases completed successfully.")
 
 
 if __name__ == '__main__':

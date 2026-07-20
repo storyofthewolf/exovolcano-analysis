@@ -1,12 +1,16 @@
 # Batch: Pinatubo eruption sensitivity suite — modern Earth.
 #
-# 17 cases sweeping eruption and microphysics parameters:
+# 18 cases sweeping eruption and microphysics parameters:
 #   fid          reference / fiducial run
-#   k*d          eruption duration [days]
-#   p*           plume parameter
+#   k*d          SO2 -> H2SO4 lifetime [days]
+#   p*           injection pressure [mb]
 #   r*           CARMA effective particle radius [µm]  <- overrides the optics
 #   scrit*       critical supersaturation
+#   sig*         plume width in ln(P)
 #   so2_*tg      SO2 mass injected [Tg]
+#
+# Case list mirrors ../description_paper/experiment_yamls/pinatubo.yaml,
+# which is the authoritative record of what was actually run.
 
 root_dir: '/gpfsm/dnb33/etwolf/cesm_scratch/archive/'
 
@@ -72,8 +76,7 @@ cases:
   # --- Fiducial ---
   - name: exovolc_pinatubo_fid
 
-  # --- Eruption duration sweep [days] ---
-  - name: exovolc_pinatubo_k2.5d
+  # --- SO2 lifetime (K) sweep [days] ---
   - name: exovolc_pinatubo_k20d
   - name: exovolc_pinatubo_k30d
   - name: exovolc_pinatubo_k35d
@@ -102,14 +105,15 @@ cases:
     optics_file: 'data/optprops/volc_pw1975_n68_r1.0um_mie.nc'
     volc_reff:   1.0
 
-  - name: exovolc_pinatubo_r2
-    optics_file: 'data/optprops/volc_pw1975_n68_r2.0um_mie.nc'
-    volc_reff:   2.0
-
   # --- Critical supersaturation sweep ---
   - name: exovolc_pinatubo_scrit1.1
   - name: exovolc_pinatubo_scrit2
   - name: exovolc_pinatubo_scrit5
+
+  # --- Plume width (sigma) sweep ---
+  - name: exovolc_pinatubo_sig0.1
+  - name: exovolc_pinatubo_sig0.3
+  - name: exovolc_pinatubo_sig0.5
 
   # --- SO2 mass sweep [Tg] ---
   - name: exovolc_pinatubo_so2_14tg

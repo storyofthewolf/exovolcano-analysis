@@ -1,12 +1,18 @@
 # Batch: Hunga Tonga eruption sensitivity suite — modern Earth.
 #
-# 16 cases sweeping eruption and microphysics parameters:
+# 20 cases sweeping eruption and microphysics parameters:
 #   fid          reference / fiducial run
-#   h2o_*        stratospheric water injected [Tg]  (h2o_none = no water)
-#   k*d          eruption duration [days]
-#   p*           plume parameter
+#   h2o_*        stratospheric water injected [Tg]  (h2o_none = dry control)
+#   k*d          SO2 -> H2SO4 lifetime [days]
+#   p*           injection pressure [mb]
 #   r*           CARMA effective particle radius [µm]  <- overrides the optics
 #   scrit*       critical supersaturation
+#   sig*         plume width in ln(P)
+#   sellitto_*   Sellitto et al. (2024) alternative SO2 / lifetime
+#   so2_*        SO2 mass injected [Tg]
+#
+# Case list mirrors ../description_paper/experiment_yamls/hungatonga.yaml,
+# which is the authoritative record of what was actually run.
 
 root_dir: '/gpfsm/dnb33/etwolf/cesm_scratch/archive/'
 
@@ -73,13 +79,14 @@ cases:
   - name: exovolc_hunga_fid
 
   # --- Stratospheric water sweep [Tg] ---
-  # Hunga Tonga's defining feature; h2o_none is the no-water control.
-  - name: exovolc_hunga_h2o_50tg
-  - name: exovolc_hunga_h2o_146tg
+  # Hunga Tonga's defining feature; h2o_none is the dry-injection control.
   - name: exovolc_hunga_h2o_none
+  - name: exovolc_hunga_h2o_50tg
+  - name: exovolc_hunga_h2o_100tg
+  - name: exovolc_hunga_h2o_146tg
 
-  # --- Eruption duration sweep [days] ---
-  - name: exovolc_hunga_k2.5d
+  # --- SO2 lifetime (K) sweep [days] ---
+  - name: exovolc_hunga_k17d
   - name: exovolc_hunga_k28d
   - name: exovolc_hunga_k35d
 
@@ -88,6 +95,9 @@ cases:
   - name: exovolc_hunga_p30
 
   # --- Effective radius sweep: these override the batch optics ---
+  # r2.0 was not run for Hunga Tonga: the observed aerosol stayed sub-micron
+  # (~0.35-0.45 um), so the sweep is 0.25/0.5/1.0 um.
+  #
   # NOTE: volc_pw1975_n68_r0.25um_mie.nc is NOT in data/optprops/ on the local
   # machine (only r0.5, r1.0, r2.0 are). This path is correct for the cluster;
   # locally, AOD for this case will fail until the table is copied in. Run with
@@ -106,11 +116,18 @@ cases:
     optics_file: 'data/optprops/volc_pw1975_n68_r1.0um_mie.nc'
     volc_reff:   1.0
 
-  - name: exovolc_hunga_r2
-    optics_file: 'data/optprops/volc_pw1975_n68_r2.0um_mie.nc'
-    volc_reff:   2.0
-
   # --- Critical supersaturation sweep ---
   - name: exovolc_hunga_scrit1.1
   - name: exovolc_hunga_scrit2
   - name: exovolc_hunga_scrit5
+
+  # --- Plume width (sigma) sweep ---
+  # fid IS the sigma=0.3 member, so it is not repeated here.
+  - name: exovolc_hunga_sig0.1
+  - name: exovolc_hunga_sig0.5
+
+  # --- Sellitto et al. (2024) alternative SO2 / lifetime ---
+  # sellitto_fid = both changes (1.0 Tg SO2, K=17 d); so2_1.0tg_k28 isolates
+  # the SO2 axis. Together with fid and k17d these form a 2x2 in (SO2, K).
+  - name: exovolc_hunga_sellitto_fid
+  - name: exovolc_hunga_so2_1.0tg_k28
