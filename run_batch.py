@@ -30,6 +30,7 @@ e.g. --nthreads 32 --no-zonal --time
 """
 
 import argparse
+import concurrent.futures as cf
 import os
 import subprocess
 import sys
@@ -92,6 +93,13 @@ def parse_args():
         '--yes', '-y', action='store_true',
         help='Skip the confirmation prompt. Implied when stdin is not a TTY, '
              'so batch scheduler jobs (sbatch) run unattended.',
+    )
+    parser.add_argument(
+        '--jobs', '-j', type=int, default=1, metavar='N',
+        help='Run N cases concurrently (default 1 = sequential). Cases are '
+             'independent, so on a many-core node N cases at moderate '
+             '--nthreads beats one case at a huge --nthreads. Keep '
+             'N * nthreads at or under your core allocation.',
     )
     parser.add_argument(
         '--nthreads', type=int, default=None, metavar='N',
@@ -157,15 +165,30 @@ def expand(batches, only_cases):
     return jobs
 
 
-def run_one(batch_path, case, forward_flags):
+def run_one(batch_path, case, forward_flags, capture=False):
+    """Run one case. With capture, hold its output and print it as one block.
+
+    Concurrent cases share a stdout, so streaming them live interleaves the
+    lines of several cases into an unreadable log. Capturing keeps each case's
+    output contiguous, at the cost of only seeing it once the case finishes.
+    """
     cmd = [sys.executable, 'run_time_series.py', batch_path,
            '--case', case] + forward_flags
-    print(f"\n{'=' * 60}")
-    print(f"  Case: {case}")
-    print(f"{'=' * 60}")
+    header = f"\n{'=' * 60}\n  Case: {case}\n{'=' * 60}"
+
     t0 = time.perf_counter()
-    result = subprocess.run(cmd)
-    elapsed = time.perf_counter() - t0
+    if capture:
+        result = subprocess.run(cmd, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True)
+        elapsed = time.perf_counter() - t0
+        print(header)
+        print(result.stdout, end='' if result.stdout.endswith('\n') else '\n')
+        sys.stdout.flush()
+    else:
+        print(header)
+        result = subprocess.run(cmd)
+        elapsed = time.perf_counter() - t0
+
     return result.returncode, elapsed
 
 
@@ -208,10 +231,30 @@ def main():
     # scheduler killing the job at its walltime -- still report what finished,
     # so the survivors can be skipped on the next attempt with --case.
     try:
-        for batch_path, case in jobs:
-            returncode, elapsed = run_one(batch_path, case, forward_flags)
-            status = 'OK' if returncode == 0 else f'FAILED (exit {returncode})'
-            results.append((case, status, elapsed))
+        if args.jobs > 1:
+            # Cases are independent processes, so concurrency is just a pool.
+            # Output is captured per case to keep each one's log contiguous.
+            with cf.ThreadPoolExecutor(max_workers=args.jobs) as pool:
+                futures = {
+                    pool.submit(run_one, batch_path, case, forward_flags, True): case
+                    for batch_path, case in jobs
+                }
+                try:
+                    for future in cf.as_completed(futures):
+                        case = futures[future]
+                        returncode, elapsed = future.result()
+                        status = 'OK' if returncode == 0 else f'FAILED (exit {returncode})'
+                        results.append((case, status, elapsed))
+                except KeyboardInterrupt:
+                    # Drop queued cases; those already running still finish.
+                    for future in futures:
+                        future.cancel()
+                    raise
+        else:
+            for batch_path, case in jobs:
+                returncode, elapsed = run_one(batch_path, case, forward_flags)
+                status = 'OK' if returncode == 0 else f'FAILED (exit {returncode})'
+                results.append((case, status, elapsed))
     except KeyboardInterrupt:
         interrupted = True
         print("\n\nInterrupted -- reporting cases finished so far.")
@@ -226,12 +269,19 @@ def main():
     print(f"  Batch summary  ({len(results)} of {len(jobs)} cases,  "
           f"{total_elapsed:.1f} s total)")
     print(f"{'=' * 60}")
+    # Report in batch order, not completion order, so the summary reads the
+    # same whether the run was sequential or concurrent.
+    order = {case: i for i, (_, case) in enumerate(jobs)}
+    results.sort(key=lambda r: order[r[0]])
     col_w = max(len(r[0]) for r in results)
     for name, status, elapsed in results:
         print(f"  {name:<{col_w}}   {elapsed:>8.1f} s   {status}")
 
     failed = [n for n, s, _ in results if s != 'OK']
-    remaining = [c for _, c in jobs[len(results):]]
+    # Compare by name, not by position: with --jobs the cases finish out of
+    # order, so slicing jobs by len(results) would name the wrong survivors.
+    done = {n for n, _, _ in results}
+    remaining = [c for _, c in jobs if c not in done]
 
     if failed:
         print(f"\n{len(failed)} case(s) FAILED:")
