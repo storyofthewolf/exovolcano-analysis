@@ -3,7 +3,7 @@
 #SBATCH --account=s2427
 #SBATCH --qos=long
 #SBATCH --time=24:00:00
-#SBATCH --mem=100gb
+#SBATCH --mem=480gb
 #SBATCH -N 1
 #SBATCH --constraint=mil
 #SBATCH --output=slurm-%x-%j.out
@@ -14,11 +14,13 @@
 # wants 126 ranks. run_batch.py is a SINGLE Python process using a threaded
 # dask scheduler, so it wants one task holding many cores instead. Asking for
 # 126 tasks here would leave SLURM_CPUS_PER_TASK at 1 and quietly run the
-# analysis single-threaded on a 126-core node.
+# analysis single-threaded on a full node.
 #
-# 124 = 126 cores on a Milan node, less 2 left for system overhead.
+# Node (Supermicro TwinPro, AMD Milan EPYC): 2 x 64-core sockets = 128 cores,
+# 512 GB memory. 126 = 128 less 2 for system overhead, matching the core count
+# the CESM scripts request; 480gb leaves headroom under the 512 GB total.
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=124
+#SBATCH --cpus-per-task=126
 
 # Batch analysis of the eruption suites (54 cases across three batches).
 #
@@ -51,14 +53,14 @@ fi
 cd "$REPO" || exit 1
 
 # Cases are independent, and dask's threaded scheduler stops scaling well
-# before 124 threads (GIL contention, and this workload is largely Lustre
+# before 126 threads (GIL contention, and this workload is largely Lustre
 # I/O-bound). So spend the node on case-level parallelism instead: JOBS cases
 # at a time, NTHREADS each, with JOBS * NTHREADS <= the allocation.
 #
-# 8 x 15 = 120 of 124 cores. These are a starting point, not a tuned result --
+# 9 x 14 = 126 exactly. These are a starting point, not a tuned result --
 # see the timing note at the bottom of this script.
 CORES=${SLURM_CPUS_PER_TASK:-8}
-JOBS=${JOBS:-8}
+JOBS=${JOBS:-9}
 NTHREADS=${NTHREADS:-$(( CORES / JOBS ))}
 [ "$NTHREADS" -lt 1 ] && NTHREADS=1
 
@@ -102,17 +104,25 @@ exit $status
 # ---------------------------------------------------------------------------
 # TUNING JOBS / NTHREADS
 #
-# 8 x 15 is a guess, not a measurement -- nobody has timed this pipeline on a
+# 9 x 14 is a guess, not a measurement -- nobody has timed this pipeline on a
 # Milan node yet. --time makes every case print a section breakdown; use the
 # first real run to find where it actually spends its time. Override without
 # editing this file:
 #
-#     sbatch --export=ALL,JOBS=16,NTHREADS=7 run_batch.sbatch
+#     sbatch --export=ALL,JOBS=18,NTHREADS=7 run_batch.sbatch
 #
 # If cases are I/O-bound on Lustre (likely -- they read multi-GB CAM history),
 # more concurrent cases at fewer threads each usually wins, since one case
-# blocked on I/O leaves its cores idle. If they turn out to be CPU-bound,
-# push the other way. Memory is the limit on raising JOBS: --mem=100gb across
-# JOBS cases is ~12 GB per case at 8, and each case holds dask chunks of a
-# multi-GB dataset. Watch for OOM kills before raising it much higher.
+# blocked on I/O leaves its cores idle. If they turn out to be CPU-bound, push
+# the other way.
+#
+# Memory is unlikely to bind before core count does: 480gb over 9 concurrent
+# cases is ~53 GB each, well clear of what one case's dask chunks should need.
+# That headroom means JOBS can go well past 9 if the timings favor it -- 18 x 7
+# or even 26 x 5 are worth trying. The ceiling to watch is Lustre contention,
+# not RAM: enough concurrent readers will slow each other down, and that shows
+# up as rising per-case wall time in the --time output rather than as an error.
+#
+# With only 54 cases, JOBS above ~27 also starts wasting the node on the
+# tail -- the last wave runs with most slots idle.
 # ---------------------------------------------------------------------------
