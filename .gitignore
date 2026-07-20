@@ -11,6 +11,8 @@ __pycache__/
 *.csv
 *.pt
 *.png
+*.out
+*.txt
 
 # allow optical property netcdfs
 !data/optprops/*.nc

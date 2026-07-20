@@ -36,6 +36,13 @@
 
 set -u
 
+# A batch job gets no interactive shell, so ~/.cshrc never runs and the
+# loadpy alias does not exist here. Initialize Lmod explicitly -- without
+# the source line, module is undefined and module load silently does
+# nothing, which is exactly how job 57223762 died in six seconds.
+source /usr/share/lmod/lmod/init/bash
+module load python/GEOSpyD/25.3.1-0/3.13
+
 REPO=/gpfsm/dhome/etwolf/pythonWorkspace/exovolcano-analysis-scripts
 
 # Must match remote_base in fetch_config.yaml, otherwise fetch_exovolc.py will
