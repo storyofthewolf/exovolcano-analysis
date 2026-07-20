@@ -36,7 +36,7 @@
 
 set -u
 
-REPO=/gpfsm/dhome/etwolf/pythonWorkspace/exovolcano-analysis
+REPO=/gpfsm/dhome/etwolf/pythonWorkspace/exovolcano-analysis-scripts
 
 # Must match remote_base in fetch_config.yaml, otherwise fetch_exovolc.py will
 # not find what this run produces. fetch expects <remote_base>/<batch>/{data,
@@ -50,7 +50,28 @@ if [ "$#" -gt 0 ]; then
     BATCHES=("$@")
 fi
 
-cd "$REPO" || exit 1
+# Fail loudly rather than leaving a bare exit code in the job log.
+cd "$REPO" || { echo "ERROR: cannot cd to REPO=$REPO"; exit 1; }
+
+if [ ! -d "$REMOTE_BASE" ]; then
+    mkdir -p "$REMOTE_BASE" || {
+        echo "ERROR: cannot create REMOTE_BASE=$REMOTE_BASE"; exit 1; }
+fi
+if [ ! -w "$REMOTE_BASE" ]; then
+    echo "ERROR: REMOTE_BASE not writable: $REMOTE_BASE"
+    exit 1
+fi
+
+# Catch a missing/incomplete Python environment now, not 9 cases deep. A batch
+# job does not inherit an interactively loaded module or conda env, so this is
+# where that shows up.
+python -c 'import xarray, dask, netCDF4, numpy, pandas, matplotlib, yaml' || {
+    echo "ERROR: python environment is missing a required package."
+    echo "       python: $(command -v python)"
+    echo "       If you normally 'module load' or activate a conda env for"
+    echo "       this, add it to this script above the batch loop."
+    exit 1
+}
 
 # Cases are independent, and dask's threaded scheduler stops scaling well
 # before 126 threads (GIL contention, and this workload is largely Lustre
