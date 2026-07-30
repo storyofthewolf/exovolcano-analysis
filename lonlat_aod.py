@@ -67,6 +67,7 @@ import pandas as pd
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 import dask
 
 import config
@@ -131,9 +132,18 @@ with ds:
               f"peak={np.nanmax(snap):.4f})")
 
         fig, ax = plt.subplots(figsize=(7, 3.2))
-        vmax = max(np.nanmax(snap), 1e-4)
-        levels = np.linspace(0, vmax, 25)
-        cf = ax.contourf(lon_plot, lat, snap, levels=levels, cmap='magma_r', extend='max')
+
+        # Log scale anchored at this snapshot's own peak, 4 decades of dynamic
+        # range below it -- matches the LOG_SCALE_DECADES convention zonal_plots.py
+        # uses for SO2/H2SO4/Q/VOLCHZMD.
+        decades = 4
+        vmax = max(np.nanmax(snap), 1e-12)
+        vmin = vmax / 10**decades
+        levels = np.logspace(np.log10(vmin), np.log10(vmax), 25)
+        plot_data = np.where(snap > 0, snap, np.nan)
+        cf = ax.contourf(lon_plot, lat, plot_data,
+                         levels=levels, norm=mcolors.LogNorm(vmin=vmin, vmax=vmax),
+                         cmap='magma_r', extend='min')
         cf.set_edgecolor('face')
         cbar = fig.colorbar(cf, ax=ax, pad=0.02)
         cbar.set_label('AOD at 550 nm')
@@ -142,8 +152,7 @@ with ds:
             vent_lon_shifted = args.vent_lon - 360.0 if args.vent_lon > 180.0 else args.vent_lon
             ax.plot(vent_lon_shifted, args.vent_lat, marker='^', color='cyan',
                     markersize=8, markeredgecolor='black', markeredgewidth=0.8,
-                    linestyle='none', label='Vent')
-            ax.legend(loc='upper right', fontsize=7, frameon=False)
+                    linestyle='none')
 
         ax.set_xlabel('Longitude (deg)')
         ax.set_ylabel('Latitude (deg)')
