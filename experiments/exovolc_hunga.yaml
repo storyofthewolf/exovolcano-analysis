@@ -1,6 +1,6 @@
 # Batch: Hunga Tonga eruption sensitivity suite — modern Earth.
 #
-# 20 cases sweeping eruption and microphysics parameters:
+# 22 cases sweeping eruption and microphysics parameters:
 #   fid          reference / fiducial run
 #   h2o_*        stratospheric water injected [Tg]  (h2o_none = dry control)
 #   k*d          SO2 -> H2SO4 lifetime [days]
@@ -131,3 +131,9 @@ cases:
   # the SO2 axis. Together with fid and k17d these form a 2x2 in (SO2, K).
   - name: exovolc_hunga_sellitto_fid
   - name: exovolc_hunga_so2_1.0tg_k28
+
+  # Higher-SO2 extension: Sellitto et al. (2024)'s >=1.0 Tg is a lower bound,
+  # not a point estimate. Both at K=17d, r=0.5 um (SO2 mass is the only axis
+  # varied relative to sellitto_fid). Added 2026-07-29.
+  - name: exovolc_hunga_sellitto_1.5tg
+  - name: exovolc_hunga_sellitto_2.0tg
