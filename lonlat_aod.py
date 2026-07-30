@@ -147,6 +147,12 @@ with ds:
         cf.set_edgecolor('face')
         cbar = fig.colorbar(cf, ax=ax, pad=0.02)
         cbar.set_label('AOD at 550 nm')
+        # Explicit one-tick-per-decade labels: the default LogNorm tick
+        # locator can crowd or drop labels entirely over a narrow 4-decade
+        # span, so set them by hand from the same vmin/vmax used for the norm.
+        tick_decades = np.arange(np.floor(np.log10(vmin)), np.ceil(np.log10(vmax)) + 1)
+        cbar.set_ticks(10.0**tick_decades)
+        cbar.set_ticklabels([f"$10^{{{int(d)}}}$" for d in tick_decades])
 
         if args.vent_lat is not None:
             vent_lon_shifted = args.vent_lon - 360.0 if args.vent_lon > 180.0 else args.vent_lon
