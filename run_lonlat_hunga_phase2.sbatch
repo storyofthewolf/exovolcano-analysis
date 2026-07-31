@@ -1,7 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=exovolc_lonlat
 #SBATCH --account=s2427
-#SBATCH --qos=long
+# No --qos=long here: that QoS requires a walltime longer than this job asks
+# for and is rejected at submit time. Eight cases at ~4 min each in the main
+# pipeline leaves 4 h with ample headroom on the default QoS.
 #SBATCH --time=04:00:00
 #SBATCH --mem=480gb
 #SBATCH -N 1
