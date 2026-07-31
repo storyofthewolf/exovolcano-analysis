@@ -1,0 +1,127 @@
+# Batch: Hunga Tonga eruption sensitivity suite, phase 2 — modern Earth.
+#
+# 8 cases extending the phase-1 suite (exovolc_hunga.yaml, 20 cases) along the
+# axes that phase 1 could not reach. Split out to match the run-side split into
+# ../description_paper/experiment_yamls/hungatonga_phase2.yaml, which is the
+# authoritative record of what was actually run. Every diagnostic, planetary
+# constant, and output setting below is identical to exovolc_hunga.yaml, so the
+# two batches are directly comparable case-for-case.
+#
+#   sellitto_*tg      higher-SO2 extension at Sellitto's K = 17 d
+#   p50, p70          injection pressure [mb]; probes peak TIMING, not magnitude
+#   k8d               fast-conversion end of the SO2 -> H2SO4 lifetime axis
+#   r0.4*             observed Hunga effective radius (SAGE III/ISS, CALIOP)
+#   raikoke_equiv     1.5 Tg control against Schoeberl (2023) Table 1
+#
+# Base configuration, eruption location, plume width, and duration are the same
+# as phase 1; see hungatonga_phase2.yaml for the per-case scientific rationale.
+
+root_dir: '/gpfsm/dnb33/etwolf/cesm_scratch/archive/'
+
+# Standard CESM archive layout, so folder_template / file_template are left at
+# their defaults ('{case}/atm/hist' and '{case}.cam.h1.*.nc'). History files are
+# globbed — no need to enumerate them.
+
+# --- Planet: modern Earth (written once; every case inherits) ---
+g_const: 9.80665    # standard Earth (m/s^2)
+r_air:   287.058    # Earth air, ~N2/O2 (J/kg/K)
+r_earth: 6.371e6    # (m)
+
+figures_dir: 'figures'
+data_dir:    'data'
+
+scalar_vars:
+  - name: SO2
+    method: mass_integral
+  - name: H2SO4
+    method: mass_integral
+  - name: VOLCHZMD
+    method: volume_integral
+  - name: Q
+    method: mass_integral
+  - name: TS
+    method: area_mean
+  - name: TGCLDLWP
+    method: area_mean
+  - name: TMQ
+    method: area_mean
+
+profile_vars:
+  - name: T
+    method: area_mean
+  - name: SO2
+    method: area_mean
+  - name: H2SO4
+    method: area_mean
+  - name: Q
+    method: area_mean
+  - name: VOLCHZMD
+    method: area_mean
+
+zonal_mean_vars:
+  - name: T
+  - name: SO2
+  - name: H2SO4
+  - name: VOLCHZMD
+
+zonal_mean_periods:
+  increment: [0, 1, 4, 10, 50, 100]   # days since start
+
+# --- Aerosol optics ---
+# Batch default matches phase 1: carma_volc_reff = 0.5 µm. The two '_r0.4'
+# cases override both keys below — keep optics_file and volc_reff consistent,
+# the file IS the Mie table for that radius.
+optics_file: 'data/optprops/volc_pw1975_n68_r0.5um_mie.nc'
+volc_reff:   0.5
+rho_aerosol: 1.84
+
+cases:
+
+  # --- Higher-SO2 extension of the Sellitto axis, at K = 17 d ---
+  # Extends sellitto_fid (1.0 Tg) to 1.5 and 2.0 Tg. Peak AOD is exactly linear
+  # in injected SO2 in this scheme, so the global-mean peaks are predictable by
+  # proportion; the lon-lat plume-tracked diagnostic is not, and is the reason
+  # these were run.
+  - name: exovolc_hunga_sellitto_1.5tg
+  - name: exovolc_hunga_sellitto_2.0tg
+
+  # --- Injection pressure: peak timing and decay ---
+  # Extends the phase-1 p5/p30 axis. p30 peaked closest to the observed timing,
+  # which points at injection height as the lever on WHEN the global-mean AOD
+  # peaks. Both at the fiducial 0.5 Tg so timing is not confounded with mass.
+  - name: exovolc_hunga_p50
+  - name: exovolc_hunga_p70
+
+  # --- Fast-conversion end of the K axis ---
+  # Phase 1 bottoms out at K = 17 d and never peaks earlier than mid-August.
+  # K = 8 d tests whether the late peak is a conversion-timescale artifact at
+  # all, or is instead set by transport and removal.
+  - name: exovolc_hunga_k8d
+
+  # --- Observed effective radius: these override the batch optics ---
+  # Retrievals put the grown Hunga aerosol at Reff = 0.35-0.45 um, so 0.4 um is
+  # the observationally-centered value for THIS eruption. The 0.5 um fiducial
+  # remains the canonical choice for the scheme as a whole.
+  #
+  # volc_pw1975_n68_r0.4um_mie.nc was generated 2026-07-30 into the ExoRT tree
+  # (/gpfsm/dnb33/etwolf/models/ExoRT/data/aerosol) for the model to read. The
+  # analysis pipeline reads its OWN copy under data/optprops/, so the table must
+  # be present there too or AOD for these two cases will fail. Same caveat as
+  # the r0.25 table in phase 1.
+  - name: exovolc_hunga_r0.4
+    optics_file: 'data/optprops/volc_pw1975_n68_r0.4um_mie.nc'
+    volc_reff:   0.4
+
+  # Both observationally-centered choices at once: measured Reff (0.4 um) and
+  # the upper part of the disputed SO2 range (1.0 Tg, Sellitto's lower bound).
+  - name: exovolc_hunga_r0.4_so2_1.0tg
+    optics_file: 'data/optprops/volc_pw1975_n68_r0.4um_mie.nc'
+    volc_reff:   0.4
+
+  # --- Raikoke-equivalent control ---
+  # Schoeberl et al. (2023) Table 1 puts Raikoke 2019 at 0.016 global-mean
+  # 550 nm AOD against Hunga's 0.018. Run at the Hunga location and height as a
+  # controlled comparison, not as a Raikoke simulation: it is the one case that
+  # can separate "our SO2 mass is wrong" from "our mass-to-AOD conversion is
+  # wrong". Dry (1 Gg H2O) by design.
+  - name: exovolc_hunga_raikoke_equiv
